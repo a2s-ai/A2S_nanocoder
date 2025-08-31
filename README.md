@@ -1,3 +1,68 @@
+# A2S-AI (Build and Run)
+
+```
+git clone https://github.com/a2s-ai/A2S_nanocoder.git
+
+cd A2S_nanocoder/
+
+vi agents.config.json
+
+daniel@MacBook A2S_nanocoder % cat agents.config.json
+{
+	"nanocoder": {
+		"openAICompatible": {
+			"baseUrl": "https://XXX-XXX-XXX-XXX",
+			"apiKey": "a2s-ai",
+			"models": ["qwen3:235b-a22b-instruct-2507-q4_K_M", "qwen3:235b-a22b-thinking-2507-q4_K_M"]
+		}
+	}
+}
+daniel@MacBook A2S_nanocoder %
+
+./run.sh
+```
+
+![a2s-ai](a2s-ai/nanocoder.png)
+
+# A2S GPU Server
+
+* 4 x NVIDIA RTX 6000A
+
+## Ollama (Docker) Settings
+
+```
+root@ai-ubuntu24gpu-large:~# cat /opt/run-ollama-max.sh
+#!/bin/sh
+
+export HUGGING_FACE_HUB_TOKEN=hf_XXX-XXX-XXX
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
+
+docker run \
+       --name ollama-max \
+       --network ollama-max \
+       --gpus='"device=0,1,2,3"' \
+       --runtime=nvidia \
+       --shm-size=8g \
+       -p 11434:11434 \
+       --rm --init \
+       -e OLLAMA_HOME=/ollama-data \
+       -v /data/opt/ollama:/ollama-data \
+       -v /data/opt/ollama:/root/.ollama \
+       -e OLLAMA_KEEP_ALIVE=-1 \
+       -e OLLAMA_MAX_LOADED_MODELS=1 \
+       -e OLLAMA_NUM_PARALLEL=4 \
+       -e OLLAMA_MAX_QUEUE=512 \
+       -e OLLAMA_ORIGINS="*" \
+       -e OLLAMA_DEBUG=0 \
+       -e OLLAMA_NUM_GPU_LAYERS=9999 \
+       -e OLLAMA_DISABLE_CPU=1 \
+       -e OLLAMA_LOAD_TIMEOUT=600 \
+       ollama/ollama:latest
+
+# EOF
+root@ai-ubuntu24gpu-large:~#
+```
+
 # Nanocoder
 
 A local-first CLI coding agent that brings the power of agentic coding tools like Claude Code and Gemini CLI to local models or controlled APIs like OpenRouter. Built with privacy and control in mind, Nanocoder supports multiple AI providers with tool support for file operations and command execution.
