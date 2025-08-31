@@ -18,8 +18,10 @@ daniel@MacBook A2S_nanocoder % cat agents.config.json
 	}
 }
 daniel@MacBook A2S_nanocoder %
+```
 
-./run.sh
+```
+./docker_build_and_run.sh
 ```
 
 ![a2s-ai](a2s-ai/nanocoder.png)
