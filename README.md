@@ -10,11 +10,15 @@ vi agents.config.json
 daniel@MacBook A2S_nanocoder % cat agents.config.json
 {
 	"nanocoder": {
-		"openAICompatible": {
-			"baseUrl": "https://XXX-XXX-XXX-XXX",
-			"apiKey": "a2s-ai",
-			"models": ["qwen3:235b-a22b-instruct-2507-q4_K_M", "qwen3:235b-a22b-thinking-2507-q4_K_M"]
-		}
+		"providers": [
+			{
+				"name": "Ollama",
+				"baseUrl": "https://XXX-XXX-XXX-XXX/v1",
+				"models": ["qwen3-coder:32b", "qwen3:235b-a22b-instruct-2507-q4_K_M"]
+			}
+		],
+		"mcpServers": [
+		]
 	}
 }
 daniel@MacBook A2S_nanocoder %
