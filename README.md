@@ -14,7 +14,7 @@ daniel@MacBook A2S_nanocoder % cat agents.config.json
 			{
 				"name": "Ollama",
 				"baseUrl": "https://XXX-XXX-XXX-XXX/v1",
-				"models": ["qwen3-coder:32b", "qwen3:235b-a22b-instruct-2507-q4_K_M"]
+				"models": ["qwen3-coder:30b", "qwen3:235b-a22b-instruct-2507-q4_K_M"]
 			}
 		],
 		"mcpServers": [
