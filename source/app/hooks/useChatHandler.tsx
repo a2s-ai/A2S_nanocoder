@@ -1,14 +1,16 @@
-import {LLMClient, Message} from '../../types/core.js';
+import {LLMClient, Message, ToolCall, ToolResult} from '../../types/core.js';
 import {ToolManager} from '../../tools/tool-manager.js';
-import {readFileSync, existsSync} from 'fs';
-import {promptPath} from '../../config/index.js';
+import {toolDefinitions} from '../../tools/index.js';
+import {processPromptTemplate} from '../../utils/prompt-processor.js';
 import {
 	parseToolCallsFromContent,
 	cleanContentFromToolCalls,
 } from '../../tool-calling/index.js';
+import {ConversationStateManager} from '../utils/conversationState.js';
 import UserMessage from '../../components/user-message.js';
 import AssistantMessage from '../../components/assistant-message.js';
 import ErrorMessage from '../../components/error-message.js';
+import ToolMessage from '../../components/tool-message.js';
 import {ThinkingStats} from './useAppState.js';
 import React from 'react';
 
@@ -54,6 +56,7 @@ interface UseChatHandlerProps {
 	toolManager: ToolManager | null;
 	messages: Message[];
 	setMessages: (messages: Message[]) => void;
+	getMessageTokens?: (message: Message) => number;
 	currentModel: string;
 	setIsThinking: (thinking: boolean) => void;
 	setIsCancelling: (cancelling: boolean) => void;
@@ -77,6 +80,7 @@ export function useChatHandler({
 	toolManager,
 	messages,
 	setMessages,
+	getMessageTokens,
 	currentModel,
 	setIsThinking,
 	setIsCancelling,
@@ -87,6 +91,76 @@ export function useChatHandler({
 	setAbortController,
 	onStartToolConfirmationFlow,
 }: UseChatHandlerProps) {
+	// Conversation state manager for enhanced context
+	const conversationStateManager = React.useRef(new ConversationStateManager());
+
+	// Reset conversation state when messages are cleared
+	React.useEffect(() => {
+		if (messages.length === 0) {
+			conversationStateManager.current.reset();
+		}
+	}, [messages.length]);
+	// Display tool result with proper formatting (similar to useToolHandler)
+	const displayToolResult = async (toolCall: any, result: any) => {
+		if (toolManager) {
+			const formatter = toolManager.getToolFormatter(result.name);
+			if (formatter) {
+				try {
+					// Parse arguments if they're a JSON string
+					let parsedArgs = toolCall.function.arguments;
+					if (typeof parsedArgs === 'string') {
+						try {
+							parsedArgs = JSON.parse(parsedArgs);
+						} catch (e) {
+							// If parsing fails, use as-is
+						}
+					}
+					const formattedResult = await formatter(parsedArgs, result.content);
+
+					if (React.isValidElement(formattedResult)) {
+						addToChatQueue(
+							React.cloneElement(formattedResult, {
+								key: `tool-result-${
+									result.tool_call_id
+								}-${componentKeyCounter}-${Date.now()}`,
+							}),
+						);
+					} else {
+						addToChatQueue(
+							<ToolMessage
+								key={`tool-result-${
+									result.tool_call_id
+								}-${componentKeyCounter}-${Date.now()}`}
+								title={`⚒ ${result.name}`}
+								message={String(formattedResult)}
+								hideBox={true}
+							/>,
+						);
+					}
+				} catch (formatterError) {
+					// If formatter fails, show raw result
+					addToChatQueue(
+						<ToolMessage
+							key={`tool-result-${result.tool_call_id}-${componentKeyCounter}`}
+							title={`⚒ ${result.name}`}
+							message={result.content}
+							hideBox={true}
+						/>,
+					);
+				}
+			} else {
+				// No formatter, show raw result
+				addToChatQueue(
+					<ToolMessage
+						key={`tool-result-${result.tool_call_id}-${componentKeyCounter}`}
+						title={`⚒ ${result.name}`}
+						message={result.content}
+						hideBox={true}
+					/>,
+				);
+			}
+		}
+	};
 	// Throttle thinking stats updates to reduce re-renders
 	const throttledSetThinkingStats = React.useCallback(
 		(() => {
@@ -192,10 +266,13 @@ export function useChatHandler({
 
 			// Update thinking stats in real-time
 			if (!chunk.done) {
-				const systemTokens = Math.ceil(300 / 4);
-				const conversationTokens = messages.reduce((total, msg) => {
-					return total + Math.ceil((msg.content?.length || 0) / 4);
-				}, 0);
+				const systemTokens = Math.ceil(systemMessage.content.length / 4); // Use actual system prompt length
+				const conversationTokens = getMessageTokens
+					? messages.reduce((total, msg) => total + getMessageTokens(msg), 0)
+					: messages.reduce(
+							(total, msg) => total + Math.ceil((msg.content?.length || 0) / 4),
+							0,
+					  );
 				const totalTokensUsed = systemTokens + conversationTokens + tokenCount;
 
 				throttledSetThinkingStats({
@@ -211,7 +288,7 @@ export function useChatHandler({
 			throw new Error('No response received from model');
 		}
 
-		// Parse any tool calls from the content itself
+		// Parse any tool calls from content for non-tool-calling models
 		const parsedToolCalls = parseToolCallsFromContent(fullContent);
 		const cleanedContent = cleanContentFromToolCalls(
 			fullContent,
@@ -229,12 +306,9 @@ export function useChatHandler({
 			);
 		}
 
-		// Merge structured tool calls with content-parsed tool calls
+		// Merge structured tool calls from LangGraph with content-parsed tool calls
 		const allToolCalls = [...(toolCalls || []), ...parsedToolCalls];
-
-		// Filter out invalid tool calls
-		// const validToolCalls = filterValidToolCalls(allToolCalls, toolManager?.getAllTools() || []);
-		const validToolCalls = allToolCalls; // Temporarily disabled filtering
+		const validToolCalls = filterValidToolCalls(allToolCalls);
 
 		// Add assistant message to conversation history
 		const assistantMsg: Message = {
@@ -244,15 +318,159 @@ export function useChatHandler({
 		};
 		setMessages([...messages, assistantMsg]);
 
+		// Update conversation state with assistant message
+		conversationStateManager.current.updateAssistantMessage(assistantMsg);
+
 		// Handle tool calls if present - this continues the loop
 		if (validToolCalls && validToolCalls.length > 0) {
-			// Start tool confirmation flow
-			onStartToolConfirmationFlow(
-				validToolCalls,
-				messages,
-				assistantMsg,
-				systemMessage,
-			);
+			// First, validate tools and separate valid from unknown
+			const knownToolCalls: ToolCall[] = [];
+			const unknownToolErrors: ToolResult[] = [];
+
+			for (const toolCall of validToolCalls) {
+				if (!toolManager?.hasTool(toolCall.function.name)) {
+					// Create error result for unknown tool
+					const errorResult: ToolResult = {
+						tool_call_id: toolCall.id,
+						role: 'tool' as const,
+						name: toolCall.function.name,
+						content: `Error: Unknown tool: ${toolCall.function.name}`,
+					};
+					unknownToolErrors.push(errorResult);
+
+					// Display the error result
+					await displayToolResult(toolCall, errorResult);
+				} else {
+					// Tool exists, add to valid list
+					knownToolCalls.push(toolCall);
+				}
+			}
+
+			// If there were unknown tools, continue conversation with all errors
+			if (unknownToolErrors.length > 0) {
+				const toolMessages = unknownToolErrors.map(result => ({
+					role: 'tool' as const,
+					content: result.content || '',
+					tool_call_id: result.tool_call_id,
+					name: result.name,
+				}));
+
+				const updatedMessagesWithError = [
+					...messages,
+					assistantMsg,
+					...toolMessages,
+				];
+
+				setMessages(updatedMessagesWithError);
+
+				// Continue the main conversation loop with error messages as context
+				await processAssistantResponse(systemMessage, updatedMessagesWithError);
+				return;
+			}
+
+			// If we get here, all tools are valid - proceed with normal flow
+			// Use knownToolCalls for the rest of the processing
+
+			// Separate tools that need confirmation vs those that don't
+			const toolsNeedingConfirmation: ToolCall[] = [];
+			const toolsToExecuteDirectly: ToolCall[] = [];
+
+			for (const toolCall of knownToolCalls) {
+				const toolDef = toolDefinitions.find(
+					def => def.config.function.name === toolCall.function.name,
+				);
+
+				if (toolDef && toolDef.requiresConfirmation === false) {
+					toolsToExecuteDirectly.push(toolCall);
+				} else {
+					toolsNeedingConfirmation.push(toolCall);
+				}
+			}
+
+			// Execute non-confirmation tools directly
+			if (toolsToExecuteDirectly.length > 0) {
+				// Import processToolUse here to avoid circular dependencies
+				const {processToolUse} = await import('../../message-handler.js');
+				const directResults: ToolResult[] = [];
+
+				for (const toolCall of toolsToExecuteDirectly) {
+					try {
+						// Double-check tool exists before execution (safety net)
+						if (!toolManager?.hasTool(toolCall.function.name)) {
+							throw new Error(`Unknown tool: ${toolCall.function.name}`);
+						}
+
+						const result = await processToolUse(toolCall);
+						directResults.push(result);
+
+						// Update conversation state with tool execution
+						conversationStateManager.current.updateAfterToolExecution(
+							toolCall,
+							result.content,
+						);
+
+						// Display the tool result immediately
+						await displayToolResult(toolCall, result);
+					} catch (error) {
+						// Handle tool execution errors
+						const errorResult: ToolResult = {
+							tool_call_id: toolCall.id,
+							role: 'tool' as const,
+							name: toolCall.function.name,
+							content: `Error: ${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						};
+						directResults.push(errorResult);
+
+						// Update conversation state with error
+						conversationStateManager.current.updateAfterToolExecution(
+							toolCall,
+							errorResult.content,
+						);
+
+						// Display the error result
+						await displayToolResult(toolCall, errorResult);
+					}
+				}
+
+				// If we have results, continue the conversation with them
+				if (directResults.length > 0) {
+					// Format tool results as standard tool messages
+					const toolMessages = directResults.map(result => ({
+						role: 'tool' as const,
+						content: result.content || '',
+						tool_call_id: result.tool_call_id,
+						name: result.name,
+					}));
+
+					const updatedMessagesWithTools = [
+						...messages,
+						assistantMsg,
+						...toolMessages,
+					];
+
+					setMessages(updatedMessagesWithTools);
+
+					// Continue the main conversation loop with tool results as context
+					await processAssistantResponse(
+						systemMessage,
+						updatedMessagesWithTools,
+					);
+					return;
+				}
+			}
+
+			// Start confirmation flow only for tools that need it
+			if (toolsNeedingConfirmation.length > 0) {
+				onStartToolConfirmationFlow(
+					toolsNeedingConfirmation,
+					messages,
+					assistantMsg,
+					systemMessage,
+				);
+				return; // IMPORTANT: Stop processing here, wait for user confirmation
+			}
 		}
 	};
 
@@ -308,10 +526,14 @@ export function useChatHandler({
 
 				// Update thinking stats in real-time (similar to initial response)
 				if (!chunk.done) {
-					const systemTokens = Math.ceil(300 / 4);
-					const conversationTokens = messages.reduce((total, msg) => {
-						return total + Math.ceil((msg.content?.length || 0) / 4);
-					}, 0);
+					const systemTokens = Math.ceil(systemMessage.content.length / 4); // Use actual system prompt length
+					const conversationTokens = getMessageTokens
+						? messages.reduce((total, msg) => total + getMessageTokens(msg), 0)
+						: messages.reduce(
+								(total, msg) =>
+									total + Math.ceil((msg.content?.length || 0) / 4),
+								0,
+						  );
 					const totalTokensUsed =
 						systemTokens + conversationTokens + tokenCount;
 
@@ -328,7 +550,7 @@ export function useChatHandler({
 				throw new Error('No response received from model');
 			}
 
-			// Parse any tool calls from the content itself
+			// Parse any tool calls from content for non-tool-calling models
 			const parsedToolCalls = parseToolCallsFromContent(fullContent);
 			const cleanedContent = cleanContentFromToolCalls(
 				fullContent,
@@ -346,10 +568,8 @@ export function useChatHandler({
 				);
 			}
 
-			// Merge structured tool calls with content-parsed tool calls
+			// Merge structured tool calls from LangGraph with content-parsed tool calls
 			const allToolCalls = [...(toolCalls || []), ...parsedToolCalls];
-
-			// Filter out invalid tool calls
 			const validToolCalls = filterValidToolCalls(allToolCalls);
 
 			// Add assistant message to conversation history
@@ -360,15 +580,105 @@ export function useChatHandler({
 			};
 			setMessages([...messages, assistantMsg]);
 
+			// Update conversation state with assistant message
+			conversationStateManager.current.updateAssistantMessage(assistantMsg);
+
 			// Handle tool calls if present - this continues the loop
 			if (validToolCalls && validToolCalls.length > 0) {
-				// Start tool confirmation flow
-				onStartToolConfirmationFlow(
-					validToolCalls,
-					messages,
-					assistantMsg,
-					systemMessage,
-				);
+				// Separate tools that need confirmation vs those that don't
+				const toolsNeedingConfirmation: ToolCall[] = [];
+				const toolsToExecuteDirectly: ToolCall[] = [];
+
+				for (const toolCall of validToolCalls) {
+					const toolDef = toolDefinitions.find(
+						def => def.config.function.name === toolCall.function.name,
+					);
+					if (toolDef && toolDef.requiresConfirmation === false) {
+						toolsToExecuteDirectly.push(toolCall);
+					} else {
+						toolsNeedingConfirmation.push(toolCall);
+					}
+				}
+
+				// Execute non-confirmation tools directly
+				if (toolsToExecuteDirectly.length > 0) {
+					// Import processToolUse here to avoid circular dependencies
+					const {processToolUse} = await import('../../message-handler.js');
+					const directResults: ToolResult[] = [];
+
+					for (const toolCall of toolsToExecuteDirectly) {
+						try {
+							const result = await processToolUse(toolCall);
+							directResults.push(result);
+
+							// Update conversation state with tool execution
+							conversationStateManager.current.updateAfterToolExecution(
+								toolCall,
+								result.content,
+							);
+
+							// Display the tool result immediately
+							await displayToolResult(toolCall, result);
+						} catch (error) {
+							// Handle tool execution errors
+							const errorResult: ToolResult = {
+								tool_call_id: toolCall.id,
+								role: 'tool' as const,
+								name: toolCall.function.name,
+								content: `Error: ${
+									error instanceof Error ? error.message : String(error)
+								}`,
+							};
+							directResults.push(errorResult);
+
+							// Update conversation state with error
+							conversationStateManager.current.updateAfterToolExecution(
+								toolCall,
+								errorResult.content,
+							);
+
+							// Display the error result
+							await displayToolResult(toolCall, errorResult);
+						}
+					}
+
+					// If we have results, continue the conversation with them
+					if (directResults.length > 0) {
+						// Format tool results as standard tool messages
+						const toolMessages = directResults.map(result => ({
+							role: 'tool' as const,
+							content: result.content || '',
+							tool_call_id: result.tool_call_id,
+							name: result.name,
+						}));
+
+						const updatedMessagesWithTools = [
+							...messages,
+							assistantMsg,
+							...toolMessages,
+						];
+						setMessages(updatedMessagesWithTools);
+
+						// Continue the main conversation loop with tool results as context
+						const controller = new AbortController();
+						await processAssistantResponseWithTokenTracking(
+							systemMessage,
+							updatedMessagesWithTools,
+							controller,
+						);
+						return;
+					}
+				}
+
+				// Start confirmation flow only for tools that need it
+				if (toolsNeedingConfirmation.length > 0) {
+					onStartToolConfirmationFlow(
+						toolsNeedingConfirmation,
+						messages,
+						assistantMsg,
+						systemMessage,
+					);
+				}
 			}
 			// If no tool calls, the conversation naturally ends here
 		} catch (error) {
@@ -412,6 +722,11 @@ export function useChatHandler({
 		const updatedMessages = [...messages, userMessage];
 		setMessages(updatedMessages);
 
+		// Initialize conversation state if this is a new conversation
+		if (messages.length === 0) {
+			conversationStateManager.current.initializeState(message);
+		}
+
 		// Create abort controller for cancellation
 		const controller = new AbortController();
 		setAbortController(controller);
@@ -419,31 +734,34 @@ export function useChatHandler({
 		// Start thinking indicator and streaming
 		setIsThinking(true);
 
-		// Reset per-message stats
-		setThinkingStats({
-			tokenCount: 0,
-			contextSize: client.getContextSize(),
-			totalTokensUsed: 0, // Start fresh, will be calculated properly in the interval
-		});
+		// Initialize per-message stats with existing conversation context
+		// const systemTokens = Math.ceil(systemPrompt.length / 4); // Comment out, will calculate later
+		const existingConversationTokens = getMessageTokens
+			? updatedMessages.reduce((total, msg) => total + getMessageTokens(msg), 0)
+			: updatedMessages.reduce(
+					(total, msg) => total + Math.ceil((msg.content?.length || 0) / 4),
+					0,
+			  );
 
 		try {
-			// Load system prompt from prompt.md file
-			let systemPrompt = 'You are a helpful AI assistant.'; // fallback
-			if (existsSync(promptPath)) {
-				try {
-					systemPrompt = readFileSync(promptPath, 'utf-8');
-				} catch (error) {
-					console.warn(
-						`Failed to load system prompt from ${promptPath}: ${error}`,
-					);
-				}
-			}
+			// Load and process system prompt with dynamic tool documentation
+			const availableTools = toolManager ? toolManager.getAllTools() : [];
+			const systemPrompt = processPromptTemplate(availableTools);
 
 			// Create stream request
 			const systemMessage: Message = {
 				role: 'system',
 				content: systemPrompt,
 			};
+
+			// Use the new conversation loop
+			// Initialize per-message stats with actual system prompt tokens
+			const systemTokens = Math.ceil(systemMessage.content.length / 4);
+			setThinkingStats({
+				tokenCount: 0,
+				contextSize: client.getContextSize(),
+				totalTokensUsed: systemTokens + existingConversationTokens,
+			});
 
 			// Use the new conversation loop
 			await processAssistantResponseWithTokenTracking(

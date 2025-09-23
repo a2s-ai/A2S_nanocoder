@@ -42,6 +42,7 @@ export interface ToolDefinition {
   handler: ToolHandler;
   config: Tool;
   formatter?: (args: any, result?: string) => string | Promise<string> | React.ReactElement | Promise<React.ReactElement>;
+  requiresConfirmation?: boolean;
 }
 
 export interface LLMClient {
@@ -54,7 +55,7 @@ export interface LLMClient {
   clearContext(): Promise<void>;
 }
 
-export type ProviderType = "ollama" | "openrouter" | "openai-compatible" | "llama-cpp";
+export type ProviderType = "openrouter" | "openai-compatible";
 
 export interface ToolExecutionResult {
   executed: boolean;

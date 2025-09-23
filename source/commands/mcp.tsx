@@ -3,9 +3,9 @@ import {ToolManager} from '../tools/tool-manager.js';
 import {getToolManager} from '../message-handler.js';
 import React from 'react';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {Text, Box} from 'ink';
-import {colors} from '../config/index.js';
+import {Box, Text} from 'ink';
 import {useTerminalWidth} from '../hooks/useTerminalWidth.js';
+import {useTheme} from '../hooks/useTheme.js';
 
 interface MCPProps {
 	toolManager: ToolManager | null;
@@ -13,10 +13,12 @@ interface MCPProps {
 
 export function MCP({toolManager}: MCPProps) {
 	const boxWidth = useTerminalWidth();
+	const {colors} = useTheme();
 	const connectedServers = toolManager?.getConnectedServers() || [];
 
 	return (
 		<TitledBox
+			key={colors.primary}
 			borderStyle="round"
 			titles={['/mcp']}
 			titleStyles={titleStyles.pill}
@@ -95,7 +97,7 @@ export function MCP({toolManager}: MCPProps) {
 export const mcpCommand: Command = {
 	name: 'mcp',
 	description: 'Show connected MCP servers and their tools',
-	handler: async (_args: string[]) => {
+	handler: async (_args: string[], _messages, _metadata) => {
 		const toolManager = getToolManager();
 
 		return React.createElement(MCP, {

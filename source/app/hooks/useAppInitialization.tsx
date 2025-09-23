@@ -1,4 +1,4 @@
-import {useEffect} from 'react';
+import React, {useEffect} from 'react';
 import {LLMClient, ProviderType} from '../../types/core.js';
 import {ToolManager} from '../../tools/tool-manager.js';
 import {CustomCommandLoader} from '../../custom-commands/loader.js';
@@ -9,28 +9,31 @@ import {
 	loadPreferences,
 	updateLastUsed,
 } from '../../config/preferences.js';
-import type {UserPreferences, MCPInitResult} from '../../types/index.js';
+import type {MCPInitResult, UserPreferences} from '../../types/index.js';
 import {
-	setToolRegistryGetter,
 	setToolManagerGetter,
+	setToolRegistryGetter,
 } from '../../message-handler.js';
 import {commandRegistry} from '../../commands.js';
 import {shouldLog} from '../../config/logging.js';
 import {appConfig} from '../../config/index.js';
 import {
-	helpCommand,
-	exitCommand,
 	clearCommand,
-	modelCommand,
-	providerCommand,
 	commandsCommand,
 	debugCommand,
+	exitCommand,
+	exportCommand,
+	helpCommand,
+	initCommand,
 	mcpCommand,
+	modelCommand,
+	providerCommand,
+	themeCommand,
+	updateCommand,
 } from '../../commands/index.js';
 import SuccessMessage from '../../components/success-message.js';
 import ErrorMessage from '../../components/error-message.js';
 import InfoMessage from '../../components/info-message.js';
-import React from 'react';
 
 interface UseAppInitializationProps {
 	setClient: (client: LLMClient | null) => void;
@@ -61,7 +64,6 @@ export function useAppInitialization({
 	componentKeyCounter,
 	customCommandCache,
 }: UseAppInitializationProps) {
-
 	// Initialize LLM client and model
 	const initializeClient = async (preferredProvider?: ProviderType) => {
 		const {client, actualProvider} = await createLLMClient(preferredProvider);
@@ -184,13 +186,13 @@ export function useAppInitialization({
 			addToChatQueue(
 				<ErrorMessage
 					key={`init-error-${componentKeyCounter}`}
-					message={`No providers available: ${error}\n\nThe app will remain running but chat functionality is disabled until you fix the provider configuration.`}
+					message={`No providers available: ${error}`}
 					hideBox={true}
 				/>,
 			);
 			// Leave client as null - the UI will handle this gracefully
 		}
-		
+
 		try {
 			await loadCustomCommands(newCustomCommandLoader);
 		} catch (error) {
@@ -244,6 +246,10 @@ export function useAppInitialization({
 				commandsCommand,
 				debugCommand,
 				mcpCommand,
+				initCommand,
+				themeCommand,
+				exportCommand,
+				updateCommand,
 			]);
 
 			// Now start with the properly initialized objects (excluding MCP)

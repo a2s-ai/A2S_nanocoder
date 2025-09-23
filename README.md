@@ -69,10 +69,11 @@ root@ai-ubuntu24gpu-large:~#
 
 A local-first CLI coding agent that brings the power of agentic coding tools like Claude Code and Gemini CLI to local models or controlled APIs like OpenRouter. Built with privacy and control in mind, Nanocoder supports multiple AI providers with tool support for file operations and command execution.
 
-![Screenshot](./.github/assets/example.png)
+![Example](./.github/assets/example.gif)
 
 ## Table of Contents
 
+- [FAQs](#faqs)
 - [Installation](#installation)
   - [For Users (Recommended)](#for-users-recommended)
   - [For Development](#for-development)
@@ -90,6 +91,24 @@ A local-first CLI coding agent that brings the power of agentic coding tools lik
   - [Enhanced User Experience](#-enhanced-user-experience)
   - [Developer Features](#️-developer-features)
 - [Community](#community)
+
+## FAQs
+
+### What is Nanocoder?
+
+Nanocoder is a local-first CLI coding agent that brings the power of agentic coding tools like Claude Code and Gemini CLI to local models or controlled APIs like OpenRouter. Built with privacy and control in mind, Nanocoder supports any AI provider that has an OpenAI compatible end-point, tool and non-tool calling models.
+
+### How is this different to OpenCode?
+
+This comes down to philosophy. OpenCode is a great tool, but it's owned and managed by a venture-backed company that restricts community and open-source involvement to the outskirts. With Nanocoder, the focus is on building a true community-led project where anyone can contribute openly and directly. We believe AI is too powerful to be in the hands of big corporations and everyone should have access to it.
+
+We also strongly believe in the "local-first" approach, where your data, models, and processing stay on your machine whenever possible to ensure maximum privacy and user control. Beyond that, we're actively pushing to develop advancements and frameworks for small, local models to be effective at coding locally.
+
+Not everyone will agree with this philosophy, and that's okay. We believe in fostering an inclusive community that's focused on open collaboration and privacy-first AI coding tools.
+
+### I want to be involved, how do I start?
+
+Firstly, we would love for you to be involved. You can get started contributing to Nanocoder in several ways, check out the [Community](#community) section of this README.
 
 ## Installation
 
@@ -148,74 +167,63 @@ npm run dev
 
 ### AI Provider Setup
 
-**Option A: Ollama (Local AI)**
-
-```bash
-ollama pull qwen2.5-coder:14b  # or any other model
-```
-
-**Option B: OpenRouter (Cloud AI)**
-
-Create `agents.config.json` in your **working directory** (where you run `nanocoder`):
+Nanocoder supports any OpenAI-compatible API through a unified provider configuration. Create `agents.config.json` in your **working directory** (where you run `nanocoder`):
 
 ```json
 {
 	"nanocoder": {
-		"openRouter": {
-			"apiKey": "your-api-key-here",
-			"models": ["foo-model", "bar-model"]
-		}
+		"providers": [
+			{
+				"name": "llama-cpp",
+				"baseUrl": "http://localhost:8080/v1",
+				"models": ["qwen3-coder:a3b", "deepseek-v3.1"]
+			},
+			{
+				"name": "Ollama",
+				"baseUrl": "http://localhost:11434/v1",
+				"models": ["qwen2.5-coder:14b", "llama3.2"]
+			},
+			{
+				"name": "OpenRouter",
+				"baseUrl": "https://openrouter.ai/api/v1",
+				"apiKey": "your-openrouter-api-key",
+				"models": ["openai/gpt-4o-mini", "anthropic/claude-3-haiku"]
+			},
+			{
+				"name": "LM Studio",
+				"baseUrl": "http://localhost:1234/v1",
+				"models": ["local-model"]
+			}
+		]
 	}
 }
 ```
 
-**Option C: llama.cpp (Local Inference)**
+**Common Provider Examples:**
 
-Configure llama.cpp server for local model inference:
+- **llama.cpp server**: `"baseUrl": "http://localhost:8080/v1"`
+- **llama-swap**: `"baseUrl": "http://localhost:9292/v1"`
+- **Ollama (Local)**:
 
-```json
-{
-	"nanocoder": {
-		"llamaCpp": {
-			"baseUrl": "http://localhost:8080",
-			"apiKey": "optional-api-key",
-			"models": ["your-model"],
-			"timeout": 30000,
-			"maxRetries": 3
-		}
-	}
-}
-```
+  - First run: `ollama pull qwen2.5-coder:14b`
+  - Use: `"baseUrl": "http://localhost:11434/v1"`
 
-To set up llama.cpp server:
+- **OpenRouter (Cloud)**:
 
-1. Install llama.cpp: Follow the [official installation guide](https://github.com/ggerganov/llama.cpp)
-2. Download a GGUF model (e.g., from Hugging Face)
-3. Start the server: `./llama-server -m your-model.gguf -c 4096 --host 0.0.0.0 --port 8080`
+  - Use: `"baseUrl": "https://openrouter.ai/api/v1"`
+  - Requires: `"apiKey": "your-api-key"`
 
-**Option D: OpenAI-Compatible APIs (Local or Remote)**
+- **LM Studio**: `"baseUrl": "http://localhost:1234/v1"`
+- **vLLM**: `"baseUrl": "http://localhost:8000/v1"`
+- **LocalAI**: `"baseUrl": "http://localhost:8080/v1"`
+- **OpenAI**: `"baseUrl": "https://api.openai.com/v1"`
 
-Configure any OpenAI-compatible API endpoint (e.g., LM Studio, Ollama Web API, vLLM, LocalAI, etc.):
+**Provider Configuration:**
 
-```json
-{
-	"nanocoder": {
-		"openAICompatible": {
-			"baseUrl": "http://localhost:1234",
-			"apiKey": "optional-api-key",
-			"models": ["model-1", "model-2"]
-		}
-	}
-}
-```
-
-Common OpenAI-compatible providers:
-
-- **LM Studio**: `"baseUrl": "http://localhost:1234"`
-- **Ollama Web API**: `"baseUrl": "http://localhost:11434"`
-- **vLLM**: `"baseUrl": "http://localhost:8000"`
-- **LocalAI**: `"baseUrl": "http://localhost:8080"`
-- **Any OpenAI-compatible endpoint**: Just provide the base URL
+- `name`: Display name used in `/provider` command
+- `baseUrl`: OpenAI-compatible API endpoint
+- `apiKey`: API key (optional for local servers)
+- `models`: Available model list for `/model` command
 
 ### MCP (Model Context Protocol) Servers
 
@@ -276,7 +284,7 @@ Nanocoder automatically saves your preferences to remember your choices across s
 
 **What gets saved automatically:**
 
-- **Last provider used**: The AI provider you last selected (Ollama, OpenRouter, or OpenAI-compatible)
+- **Last provider used**: The AI provider you last selected (by name from your configuration)
 - **Last model per provider**: Your preferred model for each provider
 - **Session continuity**: Automatically switches back to your preferred provider/model when restarting
 
@@ -298,13 +306,17 @@ Nanocoder automatically saves your preferences to remember your choices across s
 #### Built-in Commands
 
 - `/help` - Show available commands
+- `/init` - Initialize project with intelligent analysis, create AGENTS.md and configuration files
 - `/clear` - Clear chat history
 - `/model` - Switch between available models
-- `/provider` - Switch between AI providers (ollama/openrouter/openai-compatible)
+- `/provider` - Switch between configured AI providers
 - `/mcp` - Show connected MCP servers and their tools
 - `/debug` - Toggle logging levels (silent/normal/verbose)
 - `/custom-commands` - List all custom commands
 - `/exit` - Exit the application
+- `/export` - Export current session to markdown file
+- `/theme` - Select a theme for the Nanocoder CLI
+- `/update` - Update Nanocoder to the latest version
 - `!command` - Execute bash commands directly without leaving Nanocoder (output becomes context for the LLM)
 
 #### Custom Commands
@@ -352,12 +364,12 @@ Generate comprehensive unit tests for {{component}}. Include:
 
 ### 🔌 Multi-Provider Support
 
-- **Ollama**: Local inference with privacy and no API costs
-- **OpenRouter**: Access to premium models (Claude, GPT-4, etc.)
-- **llama.cpp**: Direct local inference with GGUF models and optimized performance
-- **OpenAI-Compatible APIs**: Support for LM Studio, vLLM, LocalAI, and any OpenAI-spec API
+- **Universal OpenAI compatibility**: Works with any OpenAI-compatible API
+- **Local providers**: Ollama, LM Studio, vLLM, LocalAI, llama.cpp
+- **Cloud providers**: OpenRouter, OpenAI, and other hosted services
 - **Smart fallback**: Automatically switches to available providers if one fails
 - **Per-provider preferences**: Remembers your preferred model for each provider
+- **Dynamic configuration**: Add any provider with just a name and endpoint
 
 ### 🛠️ Advanced Tool System
 
@@ -382,6 +394,7 @@ Generate comprehensive unit tests for {{component}}. Include:
 - **Colorized output**: Syntax highlighting and structured display
 - **Session persistence**: Maintains context and preferences across sessions
 - **Real-time indicators**: Shows token usage, timing, and processing status
+- **First-time directory security disclaimer**: Prompts on first run and stores a per-project trust decision to prevent accidental exposure of local code or secrets.
 
 ### ⚙️ Developer Features
 
@@ -393,23 +406,28 @@ Generate comprehensive unit tests for {{component}}. Include:
 
 ## Community
 
-We're a small team building Nanocoder and would love your help! Whether you're interested in contributing code, documentation, or just being part of our community, there are several ways to get involved.
+We're a small community-led team building Nanocoder and would love your help! Whether you're interested in contributing code, documentation, or just being part of our community, there are several ways to get involved.
 
-**If you want to contribute:**
+**If you want to contribute to the code:**
 
 - Read our detailed [CONTRIBUTING.md](CONTRIBUTING.md) guide for information on development setup, coding standards, and how to submit your changes.
 
-**If you want to be part of our community:**
+**If you want to be part of our community or help with other aspects like design or marketing:**
 
 - Join our Discord server to connect with other users, ask questions, share ideas, and get help: [Join our Discord server](https://discord.gg/ktPDV6rekE)
 
-Whether you're interested in:
+- Head to our GitHub issues or discussions to open and join current conversations with others in the community.
+
+**What does Nanocoder you need help with?**
+
+Nanocoder could benefit from help all across the board. Such as:
 
 - Adding support for new AI providers
 - Improving tool functionality
 - Enhancing the user experience
 - Writing documentation
 - Reporting bugs or suggesting features
-- Just learning about local-first AI coding tools
+- Marketing and getting the word out
+- Design and building more great software
 
 All contributions and community participation are welcome!

@@ -1,10 +1,12 @@
 import {Text} from 'ink';
-import {memo, useState, useEffect} from 'react';
+import {memo, useEffect, useState} from 'react';
+import {existsSync} from 'fs';
 
-import {colors} from '../config/index.js';
+import {useTheme} from '../hooks/useTheme.js';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
 import {useTerminalWidth} from '../hooks/useTerminalWidth.js';
 import {checkForUpdates} from '../utils/update-checker.js';
+import {themes} from '../config/themes.js';
 
 // Get CWD once at module load time
 const cwd = process.cwd();
@@ -24,7 +26,9 @@ export default memo(function Status({
 	model: string;
 }) {
 	const boxWidth = useTerminalWidth();
+	const {colors, currentTheme} = useTheme();
 	const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+	const [agentsMdLoaded, setAgentsMdLoaded] = useState(false);
 
 	useEffect(() => {
 		const performUpdateCheck = async () => {
@@ -39,9 +43,13 @@ export default memo(function Status({
 
 		performUpdateCheck();
 	}, []);
+	useEffect(() => {
+		setAgentsMdLoaded(existsSync(`${cwd}/AGENTS.md`));
+	}, []);
 
 	return (
 		<TitledBox
+			key={colors.primary}
 			borderStyle="round"
 			titles={['Status']}
 			titleStyles={titleStyles.pill}
@@ -61,17 +69,31 @@ export default memo(function Status({
 				{provider}, <Text bold={true}>Model: </Text>
 				{model}
 			</Text>
+			<Text color={colors.primary}>
+				<Text bold={true}>Theme: </Text>
+				{themes[currentTheme].displayName}
+			</Text>
+			{agentsMdLoaded ? (
+				<Text color={colors.secondary} italic>
+					<Text>↳ Using AGENTS.md. Project initialized</Text>
+				</Text>
+			) : (
+				<Text color={colors.secondary} italic>
+					↳ No AGENTS.md file found, run `/init` to initialize this directory
+				</Text>
+			)}
 			{updateInfo?.hasUpdate && (
-				<Text color={colors.warning}>
-					<Text bold={true}>Update Available: </Text>v
-					{updateInfo.currentVersion} → v{updateInfo.latestVersion}
+				<>
+					<Text color={colors.warning}>
+						<Text bold={true}>Update Available: </Text>v
+						{updateInfo.currentVersion} → v{updateInfo.latestVersion}
+					</Text>
 					{updateInfo.updateCommand && (
 						<Text color={colors.secondary}>
-							{' '}
-							(Run: {updateInfo.updateCommand})
+							↳ Run: /update or {updateInfo.updateCommand}
 						</Text>
 					)}
-				</Text>
+				</>
 			)}
 		</TitledBox>
 	);

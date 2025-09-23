@@ -2,7 +2,8 @@ import {useState} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {colors} from '../config/index.js';
+import {appConfig} from '../config/index.js';
+import {useTheme} from '../hooks/useTheme.js';
 import {ProviderType} from '../types/core.js';
 import {useTerminalWidth} from '../hooks/useTerminalWidth.js';
 
@@ -23,30 +24,26 @@ export default function ProviderSelector({
 	onCancel,
 }: ProviderSelectorProps) {
 	const boxWidth = useTerminalWidth();
-	const [providers] = useState<ProviderOption[]>([
-		{
-			label: `Ollama${currentProvider === 'ollama' ? ' (current)' : ''}`,
-			value: 'ollama',
-		},
-		{
-			label: `OpenRouter${
-				currentProvider === 'openrouter' ? ' (current)' : ''
-			}`,
-			value: 'openrouter',
-		},
-		{
-			label: `llama.cpp${
-				currentProvider === 'llama-cpp' ? ' (current)' : ''
-			}`,
-			value: 'llama-cpp',
-		},
-		{
-			label: `OpenAI Compatible${
-				currentProvider === 'openai-compatible' ? ' (current)' : ''
-			}`,
-			value: 'openai-compatible',
-		},
-	]);
+	const {colors} = useTheme();
+
+	const getProviderOptions = (): ProviderOption[] => {
+		const options: ProviderOption[] = [];
+
+		if (appConfig.providers) {
+			for (const provider of appConfig.providers) {
+				options.push({
+					label: `${provider.name}${
+						currentProvider === provider.name ? ' (current)' : ''
+					}`,
+					value: provider.name as ProviderType,
+				});
+			}
+		}
+
+		return options;
+	};
+
+	const [providers] = useState<ProviderOption[]>(getProviderOptions());
 
 	// Handle escape key to cancel
 	useInput((_, key) => {
@@ -61,6 +58,7 @@ export default function ProviderSelector({
 
 	return (
 		<TitledBox
+			key={colors.primary}
 			borderStyle="round"
 			titles={['Select a Provider']}
 			titleStyles={titleStyles.pill}

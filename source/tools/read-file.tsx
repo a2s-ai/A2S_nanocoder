@@ -3,36 +3,60 @@ import {readFile} from 'node:fs/promises';
 import React from 'react';
 import {Text, Box} from 'ink';
 import type {ToolHandler, ToolDefinition} from '../types/index.js';
-import {colors} from '../config/index.js';
+import {ThemeContext} from '../hooks/useTheme.js';
 import ToolMessage from '../components/tool-message.js';
 
 const handler: ToolHandler = async (args: {path: string}): Promise<string> => {
-	const content = await readFile(resolve(args.path), 'utf-8');
-	const lines = content.split('\n');
+	const absPath = resolve(args.path);
 
-	// Return content with line numbers for precise editing
-	let result = '';
-	for (let i = 0; i < lines.length; i++) {
-		const lineNum = String(i + 1).padStart(4, ' ');
-		result += `${lineNum}: ${lines[i]}\n`;
+	try {
+		const content = await readFile(absPath, 'utf-8');
+
+		// Check if file is empty (0 tokens)
+		if (content.length === 0) {
+			throw new Error(`File "${args.path}" exists but is empty (0 tokens)`);
+		}
+
+		const lines = content.split('\n');
+
+		// Return content with line numbers for precise editing
+		let result = '';
+		for (let i = 0; i < lines.length; i++) {
+			const lineNum = String(i + 1).padStart(4, ' ');
+			result += `${lineNum}: ${lines[i]}\n`;
+		}
+
+		return result.slice(0, -1); // Remove trailing newline
+	} catch (error: any) {
+		// Handle file not found and other filesystem errors
+		if (error.code === 'ENOENT') {
+			throw new Error(`File "${args.path}" does not exist`);
+		}
+
+		// Re-throw other errors (including our empty file error)
+		throw error;
 	}
-
-	return result.slice(0, -1); // Remove trailing newline
 };
 
-const formatter = async (args: any): Promise<React.ReactElement> => {
+// Create a component that will re-render when theme changes
+const ReadFileFormatter = React.memo(({args}: {args: any}) => {
+	const {colors} = React.useContext(ThemeContext)!;
 	const path = args.path || args.file_path || 'unknown';
+	const [fileInfo, setFileInfo] = React.useState({size: 0, tokens: 0});
 
-	// Read the file to get size info for token estimation
-	let fileSize = 0;
-	let estimatedTokens = 0;
-	try {
-		const content = await readFile(resolve(path), 'utf-8');
-		fileSize = content.length;
-		estimatedTokens = Math.ceil(fileSize / 4); // ~4 characters per token
-	} catch (error) {
-		// If we can't read the file, we'll show 0
-	}
+	React.useEffect(() => {
+		const loadFileInfo = async () => {
+			try {
+				const content = await readFile(resolve(path), 'utf-8');
+				const fileSize = content.length;
+				const estimatedTokens = Math.ceil(fileSize / 4);
+				setFileInfo({size: fileSize, tokens: estimatedTokens});
+			} catch (error) {
+				setFileInfo({size: 0, tokens: 0});
+			}
+		};
+		loadFileInfo();
+	}, [path]);
 
 	const messageContent = (
 		<Box flexDirection="column">
@@ -46,7 +70,7 @@ const formatter = async (args: any): Promise<React.ReactElement> => {
 			<Box>
 				<Text color={colors.secondary}>Size: </Text>
 				<Text color={colors.white}>
-					{fileSize} characters (~{estimatedTokens} tokens)
+					{fileInfo.size} characters (~{fileInfo.tokens} tokens)
 				</Text>
 			</Box>
 
@@ -63,11 +87,16 @@ const formatter = async (args: any): Promise<React.ReactElement> => {
 	);
 
 	return <ToolMessage message={messageContent} hideBox={true} />;
+});
+
+const formatter = async (args: any): Promise<React.ReactElement> => {
+	return <ReadFileFormatter args={args} />;
 };
 
 export const readFileTool: ToolDefinition = {
 	handler,
 	formatter,
+	requiresConfirmation: false,
 	config: {
 		type: 'function',
 		function: {

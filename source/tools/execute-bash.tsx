@@ -2,15 +2,9 @@ import {spawn} from 'node:child_process';
 import {highlight} from 'cli-highlight';
 import React from 'react';
 import {Text, Box} from 'ink';
-import type {ToolHandler, ToolDefinition} from '../types/index.js';
-import {colors} from '../config/index.js';
+import type {ToolHandler, ToolDefinition, BashToolResult} from '../types/index.js';
+import {ThemeContext} from '../hooks/useTheme.js';
 import ToolMessage from '../components/tool-message.js';
-
-// Define a specific type for our bash tool result
-interface BashToolResult {
-	fullOutput: string;
-	llmContext: string;
-}
 
 const handler: ToolHandler = async (args: {
 	command: string;
@@ -58,10 +52,9 @@ ${stdout}`;
 	});
 };
 
-const formatter = async (
-	args: any,
-	result?: string,
-): Promise<React.ReactElement> => {
+// Create a component that will re-render when theme changes
+const ExecuteBashFormatter = React.memo(({args, result}: {args: any; result?: string}) => {
+	const {colors} = React.useContext(ThemeContext)!;
 	const command = args.command || 'unknown';
 
 	let highlightedCommand;
@@ -119,6 +112,10 @@ const formatter = async (
 	);
 
 	return <ToolMessage message={messageContent} hideBox={true} />;
+});
+
+const formatter = async (args: any, result?: string): Promise<React.ReactElement> => {
+	return <ExecuteBashFormatter args={args} result={result} />;
 };
 
 export const executeBashTool: ToolDefinition = {

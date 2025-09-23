@@ -1,12 +1,10 @@
 import {Box, Text} from 'ink';
 import {memo} from 'react';
-import {colors} from '../config/index.js';
-
-interface UserMessageProps {
-	message: string;
-}
+import {useTheme} from '../hooks/useTheme.js';
+import type {UserMessageProps} from '../types/index.js';
 
 export default memo(function UserMessage({message}: UserMessageProps) {
+	const {colors} = useTheme();
 	// Show placeholder for long messages
 	if (message.length > 150) {
 		const lineCount = message.split('\n').length;

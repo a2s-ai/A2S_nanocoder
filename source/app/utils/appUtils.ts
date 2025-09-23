@@ -1,28 +1,11 @@
 import React from 'react';
 import {commandRegistry} from '../../commands.js';
-import {CustomCommandLoader} from '../../custom-commands/loader.js';
-import {CustomCommandExecutor} from '../../custom-commands/executor.js';
 import {parseInput} from '../../command-parser.js';
 import {toolRegistry} from '../../tools/index.js';
 import InfoMessage from '../../components/info-message.js';
 import ToolMessage from '../../components/tool-message.js';
 import ErrorMessage from '../../components/error-message.js';
-
-export interface MessageSubmissionOptions {
-	customCommandCache: Map<string, any>;
-	customCommandLoader: CustomCommandLoader | null;
-	customCommandExecutor: CustomCommandExecutor | null;
-	onClearMessages: () => Promise<void>;
-	onEnterModelSelectionMode: () => void;
-	onEnterProviderSelectionMode: () => void;
-	onHandleChatMessage: (message: string) => Promise<void>;
-	onAddToChatQueue: (component: React.ReactNode) => void;
-	componentKeyCounter: number;
-	setMessages: (messages: any[]) => void;
-	messages: any[];
-	setIsBashExecuting: (executing: boolean) => void;
-	setCurrentBashCommand: (command: string) => void;
-}
+import type {MessageSubmissionOptions} from '../../types/index.js';
 
 export async function handleMessageSubmission(
 	message: string,
@@ -35,6 +18,7 @@ export async function handleMessageSubmission(
 		onClearMessages,
 		onEnterModelSelectionMode,
 		onEnterProviderSelectionMode,
+		onEnterThemeSelectionMode,
 		onHandleChatMessage,
 		onAddToChatQueue,
 		componentKeyCounter,
@@ -158,10 +142,21 @@ ${result.fullOutput || '(No output)'}`;
 			} else if (commandName === 'provider') {
 				onEnterProviderSelectionMode();
 				return;
+			} else if (commandName === 'theme') {
+				onEnterThemeSelectionMode();
+				return;
 			}
 
 			// Execute built-in command
-			const result = await commandRegistry.execute(message.slice(1)); // Remove the leading '/'
+			const totalTokens = messages.reduce(
+				(sum, msg) => sum + options.getMessageTokens(msg),
+				0,
+			);
+			const result = await commandRegistry.execute(message.slice(1), messages, {
+				provider: options.provider,
+				model: options.model,
+				tokens: totalTokens,
+			});
 			if (result) {
 				// Check if result is JSX (React element)
 				if (React.isValidElement(result)) {
