@@ -1,6 +1,6 @@
 import React from 'react';
-import {CustomCommandLoader} from '../custom-commands/loader.js';
-import {CustomCommandExecutor} from '../custom-commands/executor.js';
+import {CustomCommandLoader} from '@/custom-commands/loader';
+import {CustomCommandExecutor} from '@/custom-commands/executor';
 
 export interface MessageSubmissionOptions {
 	customCommandCache: Map<string, any>;
@@ -10,6 +10,8 @@ export interface MessageSubmissionOptions {
 	onEnterModelSelectionMode: () => void;
 	onEnterProviderSelectionMode: () => void;
 	onEnterThemeSelectionMode: () => void;
+	onEnterRecommendationsMode: () => void;
+	onShowStatus: () => void;
 	onHandleChatMessage: (message: string) => Promise<void>;
 	onAddToChatQueue: (component: React.ReactNode) => void;
 	componentKeyCounter: number;
@@ -19,6 +21,8 @@ export interface MessageSubmissionOptions {
 	setCurrentBashCommand: (command: string) => void;
 	provider: string;
 	model: string;
+	theme: string;
+	updateInfo: any;
 	getMessageTokens: (message: any) => number;
 }
 

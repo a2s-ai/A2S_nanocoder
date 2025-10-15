@@ -1,8 +1,8 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import Spinner from 'ink-spinner';
-import {useTheme} from '../hooks/useTheme.js';
-import type {ToolExecutionIndicatorProps} from '../types/index.js';
+import {useTheme} from '@/hooks/useTheme';
+import type {ToolExecutionIndicatorProps} from '@/types/index';
 
 export default function ToolExecutionIndicator({
 	toolName,
@@ -17,7 +17,7 @@ export default function ToolExecutionIndicator({
 				<Text color={colors.tool}> Executing tool: </Text>
 				<Text color={colors.primary}>{toolName}</Text>
 			</Box>
-			
+
 			{totalTools > 1 && (
 				<Box marginTop={1}>
 					<Text color={colors.secondary}>
@@ -25,7 +25,7 @@ export default function ToolExecutionIndicator({
 					</Text>
 				</Box>
 			)}
-			
+
 			<Box marginTop={1}>
 				<Text color={colors.secondary}>Press Escape to cancel</Text>
 			</Box>

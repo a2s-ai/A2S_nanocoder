@@ -1,37 +1,38 @@
 import {Box, Text, useApp} from 'ink';
-import WelcomeMessage from './components/welcome-message.js';
+import WelcomeMessage from '@/components/welcome-message';
 import React from 'react';
-import {getThemeColors} from './config/themes.js';
-import {ThemeContext} from './hooks/useTheme.js';
-import UserInput from './components/user-input.js';
-import Status from './components/status.js';
-import ChatQueue from './components/chat-queue.js';
-import ModelSelector from './components/model-selector.js';
-import ProviderSelector from './components/provider-selector.js';
-import ThemeSelector from './components/theme-selector.js';
-import ThinkingIndicator from './components/thinking-indicator.js';
-import CancellingIndicator from './components/cancelling-indicator.js';
-import ToolConfirmation from './components/tool-confirmation.js';
-import ToolExecutionIndicator from './components/tool-execution-indicator.js';
-import BashExecutionIndicator from './components/bash-execution-indicator.js';
-import {setGlobalMessageQueue} from './utils/message-queue.js';
+import {getThemeColors} from '@/config/themes';
+import {ThemeContext} from '@/hooks/useTheme';
+import UserInput from '@/components/user-input';
+import Status from '@/components/status';
+import ChatQueue from '@/components/chat-queue';
+import ModelSelector from '@/components/model-selector';
+import ProviderSelector from '@/components/provider-selector';
+import ThemeSelector from '@/components/theme-selector';
+import ThinkingIndicator from '@/components/thinking-indicator';
+import CancellingIndicator from '@/components/cancelling-indicator';
+import ToolConfirmation from '@/components/tool-confirmation';
+import ToolExecutionIndicator from '@/components/tool-execution-indicator';
+import BashExecutionIndicator from '@/components/bash-execution-indicator';
+import {setGlobalMessageQueue} from '@/utils/message-queue';
 import Spinner from 'ink-spinner';
-import SecurityDisclaimer from './components/security-disclaimer.js';
+import SecurityDisclaimer from '@/components/security-disclaimer';
+import {RecommendationsDisplay} from '@/commands/recommendations';
 
 // Import extracted hooks and utilities
-import {useAppState} from './app/hooks/useAppState.js';
-import {useChatHandler} from './app/hooks/useChatHandler.js';
-import {useToolHandler} from './app/hooks/useToolHandler.js';
-import {useModeHandlers} from './app/hooks/useModeHandlers.js';
-import {useAppInitialization} from './app/hooks/useAppInitialization.js';
-import {useDirectoryTrust} from './app/hooks/useDirectoryTrust.js';
+import {useAppState} from '@/app/hooks/useAppState';
+import {useChatHandler} from '@/app/hooks/useChatHandler';
+import {useToolHandler} from '@/app/hooks/useToolHandler';
+import {useModeHandlers} from '@/app/hooks/useModeHandlers';
+import {useAppInitialization} from '@/app/hooks/useAppInitialization';
+import {useDirectoryTrust} from '@/app/hooks/useDirectoryTrust';
 import {
 	createClearMessagesHandler,
 	handleMessageSubmission,
-} from './app/utils/appUtils.js';
+} from '@/app/utils/appUtils';
 
 // Provide shared UI state to components
-import {UIStateProvider} from './hooks/useUIState.js';
+import {UIStateProvider} from '@/hooks/useUIState';
 
 export default function App() {
 	// Use extracted hooks
@@ -62,15 +63,14 @@ export default function App() {
 		toolManager: appState.toolManager,
 		messages: appState.messages,
 		setMessages: appState.updateMessages,
-		getMessageTokens: appState.getMessageTokens,
 		currentModel: appState.currentModel,
 		setIsThinking: appState.setIsThinking,
 		setIsCancelling: appState.setIsCancelling,
-		setThinkingStats: appState.setThinkingStats,
 		addToChatQueue: appState.addToChatQueue,
 		componentKeyCounter: appState.componentKeyCounter,
 		abortController: appState.abortController,
 		setAbortController: appState.setAbortController,
+		developmentMode: appState.developmentMode,
 		onStartToolConfirmationFlow: (
 			toolCalls,
 			updatedMessages,
@@ -108,6 +108,7 @@ export default function App() {
 		onProcessAssistantResponse: chatHandler.processAssistantResponse,
 		client: appState.client,
 		currentProvider: appState.currentProvider,
+		setDevelopmentMode: appState.setDevelopmentMode,
 	});
 
 	// Setup mode handlers
@@ -115,6 +116,7 @@ export default function App() {
 		client: appState.client,
 		currentModel: appState.currentModel,
 		currentProvider: appState.currentProvider,
+		currentTheme: appState.currentTheme,
 		setClient: appState.setClient,
 		setCurrentModel: appState.setCurrentModel,
 		setCurrentProvider: appState.setCurrentProvider,
@@ -123,6 +125,7 @@ export default function App() {
 		setIsModelSelectionMode: appState.setIsModelSelectionMode,
 		setIsProviderSelectionMode: appState.setIsProviderSelectionMode,
 		setIsThemeSelectionMode: appState.setIsThemeSelectionMode,
+		setIsRecommendationsMode: appState.setIsRecommendationsMode,
 		addToChatQueue: appState.addToChatQueue,
 		componentKeyCounter: appState.componentKeyCounter,
 	});
@@ -138,6 +141,7 @@ export default function App() {
 		setCustomCommandCache: appState.setCustomCommandCache,
 		setStartChat: appState.setStartChat,
 		setMcpInitialized: appState.setMcpInitialized,
+		setUpdateInfo: appState.setUpdateInfo,
 		addToChatQueue: appState.addToChatQueue,
 		componentKeyCounter: appState.componentKeyCounter,
 		customCommandCache: appState.customCommandCache,
@@ -156,6 +160,38 @@ export default function App() {
 		}
 	}, [appState.abortController, appState.setIsCancelling]);
 
+	const handleToggleDevelopmentMode = React.useCallback(() => {
+		appState.setDevelopmentMode(currentMode => {
+			const modes: Array<'normal' | 'auto-accept' | 'plan'> = [
+				'normal',
+				'auto-accept',
+				'plan',
+			];
+			const currentIndex = modes.indexOf(currentMode);
+			const nextIndex = (currentIndex + 1) % modes.length;
+			return modes[nextIndex];
+		});
+	}, [appState.setDevelopmentMode]);
+
+	const handleShowStatus = React.useCallback(() => {
+		appState.addToChatQueue(
+			<Status
+				key={`status-${appState.componentKeyCounter}`}
+				provider={appState.currentProvider}
+				model={appState.currentModel}
+				theme={appState.currentTheme}
+				updateInfo={appState.updateInfo}
+			/>,
+		);
+	}, [
+		appState.addToChatQueue,
+		appState.componentKeyCounter,
+		appState.currentProvider,
+		appState.currentModel,
+		appState.currentTheme,
+		appState.updateInfo,
+	]);
+
 	const handleMessageSubmit = React.useCallback(
 		async (message: string) => {
 			await handleMessageSubmission(message, {
@@ -166,6 +202,8 @@ export default function App() {
 				onEnterModelSelectionMode: modeHandlers.enterModelSelectionMode,
 				onEnterProviderSelectionMode: modeHandlers.enterProviderSelectionMode,
 				onEnterThemeSelectionMode: modeHandlers.enterThemeSelectionMode,
+				onEnterRecommendationsMode: modeHandlers.enterRecommendationsMode,
+				onShowStatus: handleShowStatus,
 				onHandleChatMessage: chatHandler.handleChatMessage,
 				onAddToChatQueue: appState.addToChatQueue,
 				componentKeyCounter: appState.componentKeyCounter,
@@ -175,6 +213,8 @@ export default function App() {
 				setCurrentBashCommand: appState.setCurrentBashCommand,
 				provider: appState.currentProvider,
 				model: appState.currentModel,
+				theme: appState.currentTheme,
+				updateInfo: appState.updateInfo,
 				getMessageTokens: appState.getMessageTokens,
 			});
 		},
@@ -185,6 +225,7 @@ export default function App() {
 			clearMessages,
 			modeHandlers.enterModelSelectionMode,
 			modeHandlers.enterProviderSelectionMode,
+			handleShowStatus,
 			chatHandler.handleChatMessage,
 			appState.addToChatQueue,
 			appState.componentKeyCounter,
@@ -198,13 +239,21 @@ export default function App() {
 	// Memoize static components to prevent unnecessary re-renders
 	const staticComponents = React.useMemo(
 		() => [
+			<WelcomeMessage key="welcome" />,
 			<Status
 				key="status"
 				provider={appState.currentProvider}
 				model={appState.currentModel}
+				theme={appState.currentTheme}
+				updateInfo={appState.updateInfo}
 			/>,
 		],
-		[appState.currentProvider, appState.currentModel],
+		[
+			appState.currentProvider,
+			appState.currentModel,
+			appState.currentTheme,
+			appState.updateInfo,
+		],
 	);
 
 	// Handle loading state for directory trust check
@@ -243,8 +292,8 @@ export default function App() {
 		<ThemeContext.Provider value={themeContextValue}>
 			<UIStateProvider>
 				<Box flexDirection="column" padding={1} width="100%">
+					{/* Use natural flexGrow layout - Static components prevent re-renders */}
 					<Box flexGrow={1} flexDirection="column" minHeight={0}>
-						<WelcomeMessage />
 						{appState.startChat && (
 							<ChatQueue
 								staticComponents={staticComponents}
@@ -253,15 +302,11 @@ export default function App() {
 						)}
 					</Box>
 					{appState.startChat && (
-						<Box flexDirection="column">
+						<Box flexDirection="column" marginLeft={-1}>
 							{appState.isCancelling ? (
 								<CancellingIndicator />
 							) : appState.isThinking ? (
-								<ThinkingIndicator
-									contextSize={appState.thinkingStats.contextSize}
-									totalTokensUsed={appState.thinkingStats.totalTokensUsed}
-									tokensPerSecond={appState.thinkingStats.tokensPerSecond}
-								/>
+								<ThinkingIndicator />
 							) : null}
 							{appState.isModelSelectionMode ? (
 								<ModelSelector
@@ -280,6 +325,10 @@ export default function App() {
 								<ThemeSelector
 									onThemeSelect={modeHandlers.handleThemeSelect}
 									onCancel={modeHandlers.handleThemeSelectionCancel}
+								/>
+							) : appState.isRecommendationsMode ? (
+								<RecommendationsDisplay
+									onCancel={modeHandlers.handleRecommendationsCancel}
 								/>
 							) : appState.isToolConfirmationMode &&
 							  appState.pendingToolCalls[appState.currentToolIndex] ? (
@@ -314,12 +363,11 @@ export default function App() {
 										appState.isBashExecuting
 									}
 									onCancel={handleCancel}
+									onToggleMode={handleToggleDevelopmentMode}
+									developmentMode={appState.developmentMode}
 								/>
 							) : appState.mcpInitialized && !appState.client ? (
-								<Text color={themeContextValue.colors.secondary}>
-									⚠️ No LLM provider available. Chat is disabled. Please fix
-									your provider configuration and restart.
-								</Text>
+								<></>
 							) : (
 								<Text color={themeContextValue.colors.secondary}>
 									<Spinner type="dots2" /> Loading...

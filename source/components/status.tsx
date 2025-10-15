@@ -1,12 +1,12 @@
 import {Text} from 'ink';
-import {memo, useEffect, useState} from 'react';
+import {memo} from 'react';
 import {existsSync} from 'fs';
 
-import {useTheme} from '../hooks/useTheme.js';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {useTerminalWidth} from '../hooks/useTerminalWidth.js';
-import {checkForUpdates} from '../utils/update-checker.js';
-import {themes} from '../config/themes.js';
+import {useTerminalWidth} from '@/hooks/useTerminalWidth';
+import {confDirMap} from '@/config/index';
+import {themes, getThemeColors} from '@/config/themes';
+import type {ThemePreset} from '@/types/ui';
 
 // Get CWD once at module load time
 const cwd = process.cwd();
@@ -21,31 +21,21 @@ interface UpdateInfo {
 export default memo(function Status({
 	provider,
 	model,
+	theme,
+	updateInfo,
+	agentsMdLoaded,
 }: {
 	provider: string;
 	model: string;
+	theme: ThemePreset;
+	updateInfo?: UpdateInfo | null;
+	agentsMdLoaded?: boolean;
 }) {
 	const boxWidth = useTerminalWidth();
-	const {colors, currentTheme} = useTheme();
-	const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-	const [agentsMdLoaded, setAgentsMdLoaded] = useState(false);
+	const colors = getThemeColors(theme);
 
-	useEffect(() => {
-		const performUpdateCheck = async () => {
-			try {
-				const info = await checkForUpdates();
-				setUpdateInfo(info);
-			} catch (error) {
-				// Silent failure - don't show errors for update checks
-				setUpdateInfo(null);
-			}
-		};
-
-		performUpdateCheck();
-	}, []);
-	useEffect(() => {
-		setAgentsMdLoaded(existsSync(`${cwd}/AGENTS.md`));
-	}, []);
+	// Check for AGENTS.md synchronously if not provided
+	const hasAgentsMd = agentsMdLoaded ?? existsSync(`${cwd}/AGENTS.md`);
 
 	return (
 		<TitledBox
@@ -64,6 +54,10 @@ export default memo(function Status({
 				<Text bold={true}>CWD: </Text>
 				{cwd}
 			</Text>
+			<Text color={colors.info}>
+				<Text bold={true}>Config: </Text>
+				{confDirMap['agents.config.json']}
+			</Text>
 			<Text color={colors.success}>
 				<Text bold={true}>Provider: </Text>
 				{provider}, <Text bold={true}>Model: </Text>
@@ -71,9 +65,9 @@ export default memo(function Status({
 			</Text>
 			<Text color={colors.primary}>
 				<Text bold={true}>Theme: </Text>
-				{themes[currentTheme].displayName}
+				{themes[theme].displayName}
 			</Text>
-			{agentsMdLoaded ? (
+			{hasAgentsMd ? (
 				<Text color={colors.secondary} italic>
 					<Text>↳ Using AGENTS.md. Project initialized</Text>
 				</Text>

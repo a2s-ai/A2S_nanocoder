@@ -1,6 +1,6 @@
-import type {ToolCall} from '../types/index.js';
-import {logError} from '../utils/message-queue.js';
-import {XMLToolCallParser} from './xml-parser.js';
+import type {ToolCall} from '@/types/index';
+import {logError} from '@/utils/message-queue';
+import {XMLToolCallParser} from '@/tool-calling/xml-parser';
 
 // XML validation functions removed - XMLToolCallParser handles XML parsing
 
@@ -151,7 +151,8 @@ export function cleanContentFromToolCalls(
 
 	// Use the new XML parser to clean XML tool calls
 	if (XMLToolCallParser.hasToolCalls(cleanedContent)) {
-		cleanedContent = XMLToolCallParser.removeToolCallsFromContent(cleanedContent);
+		cleanedContent =
+			XMLToolCallParser.removeToolCallsFromContent(cleanedContent);
 	}
 
 	// XML cleaning is handled by XMLToolCallParser.removeToolCallsFromContent above

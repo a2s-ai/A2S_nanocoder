@@ -1,11 +1,11 @@
 import React from 'react';
-import {commandRegistry} from '../../commands.js';
-import {parseInput} from '../../command-parser.js';
-import {toolRegistry} from '../../tools/index.js';
-import InfoMessage from '../../components/info-message.js';
-import ToolMessage from '../../components/tool-message.js';
-import ErrorMessage from '../../components/error-message.js';
-import type {MessageSubmissionOptions} from '../../types/index.js';
+import {commandRegistry} from '@/commands';
+import {parseInput} from '@/command-parser';
+import {toolRegistry} from '@/tools/index';
+import InfoMessage from '@/components/info-message';
+import ToolMessage from '@/components/tool-message';
+import ErrorMessage from '@/components/error-message';
+import type {MessageSubmissionOptions} from '@/types/index';
 
 export async function handleMessageSubmission(
 	message: string,
@@ -19,6 +19,8 @@ export async function handleMessageSubmission(
 		onEnterModelSelectionMode,
 		onEnterProviderSelectionMode,
 		onEnterThemeSelectionMode,
+		onEnterRecommendationsMode,
+		onShowStatus,
 		onHandleChatMessage,
 		onAddToChatQueue,
 		componentKeyCounter,
@@ -76,12 +78,11 @@ ${result.fullOutput || '(No output)'}`;
 
 			// Add the truncated output to the LLM context for future interactions
 			if (result.llmContext) {
-				const toolMessage = {
-					role: 'tool',
-					content: result.llmContext,
-					name: 'execute_bash',
+				const userMessage = {
+					role: 'user',
+					content: `Bash command output:\n\`\`\`\n$ ${bashCommand}\n${result.llmContext}\n\`\`\``,
 				};
-				setMessages([...messages, toolMessage]);
+				setMessages([...messages, userMessage]);
 			}
 
 			// Clear bash execution state
@@ -144,6 +145,12 @@ ${result.fullOutput || '(No output)'}`;
 				return;
 			} else if (commandName === 'theme') {
 				onEnterThemeSelectionMode();
+				return;
+			} else if (commandName === 'recommendations') {
+				onEnterRecommendationsMode();
+				return;
+			} else if (commandName === 'status') {
+				onShowStatus();
 				return;
 			}
 

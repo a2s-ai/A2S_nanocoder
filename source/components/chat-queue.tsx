@@ -1,38 +1,36 @@
-import {Box} from 'ink';
-import {ReactNode, useMemo, Fragment, memo} from 'react';
-import type {ChatQueueProps} from '../types/index.js';
-
-const defaultDisplayCount = 20;
+import {Box, Static} from 'ink';
+import {useMemo, Fragment, memo} from 'react';
+import type {ChatQueueProps} from '@/types/index';
 
 export default memo(function ChatQueue({
 	staticComponents = [],
 	queuedComponents = [],
-	displayCount = defaultDisplayCount,
 }: ChatQueueProps) {
-	const allComponents = useMemo(() => {
-		const totalLength = queuedComponents.length;
-		const slicedQueuedComponents = queuedComponents.slice(
-			Math.max(totalLength - displayCount, 0),
-		);
-
-		const components = [...staticComponents, ...slicedQueuedComponents];
-		return components;
-	}, [staticComponents, queuedComponents, displayCount]);
+	// Move ALL messages to static - prevents any re-renders
+	// All messages are now immutable once rendered
+	const allStaticComponents = useMemo(
+		() => [...staticComponents, ...queuedComponents],
+		[staticComponents, queuedComponents],
+	);
 
 	return (
 		<Box flexDirection="column">
-			{allComponents.map((component, index) => {
-				// Use component key if it exists, otherwise generate a fallback key
-				const key =
-					component &&
-					typeof component === 'object' &&
-					'key' in component &&
-					component.key
-						? component.key
-						: `component-${index}`;
+			{/* All content is static to prevent re-renders */}
+			{allStaticComponents.length > 0 && (
+				<Static items={allStaticComponents}>
+					{(component, index) => {
+						const key =
+							component &&
+							typeof component === 'object' &&
+							'key' in component &&
+							component.key
+								? component.key
+								: `static-${index}`;
 
 						return <Fragment key={key}>{component}</Fragment>;
-			})}
+					}}
+				</Static>
+			)}
 		</Box>
 	);
 });

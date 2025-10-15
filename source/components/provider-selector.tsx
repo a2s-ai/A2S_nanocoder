@@ -2,20 +2,19 @@ import {useState} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {appConfig} from '../config/index.js';
-import {useTheme} from '../hooks/useTheme.js';
-import {ProviderType} from '../types/core.js';
-import {useTerminalWidth} from '../hooks/useTerminalWidth.js';
+import {appConfig} from '@/config/index';
+import {useTheme} from '@/hooks/useTheme';
+import {useTerminalWidth} from '@/hooks/useTerminalWidth';
 
 interface ProviderSelectorProps {
-	currentProvider: ProviderType;
-	onProviderSelect: (provider: ProviderType) => void;
+	currentProvider: string;
+	onProviderSelect: (provider: string) => void;
 	onCancel: () => void;
 }
 
 interface ProviderOption {
 	label: string;
-	value: ProviderType;
+	value: string;
 }
 
 export default function ProviderSelector({
@@ -35,7 +34,7 @@ export default function ProviderSelector({
 					label: `${provider.name}${
 						currentProvider === provider.name ? ' (current)' : ''
 					}`,
-					value: provider.name as ProviderType,
+					value: provider.name,
 				});
 			}
 		}

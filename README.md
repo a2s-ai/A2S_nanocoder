@@ -197,6 +197,18 @@ Nanocoder supports any OpenAI-compatible API through a unified provider configur
 				"name": "LM Studio",
 				"baseUrl": "http://localhost:1234/v1",
 				"models": ["local-model"]
+			},
+			{
+				"name": "Z.ai",
+				"baseUrl": "https://api.z.ai/api/paas/v4/",
+				"apiKey": "your-z.ai-api-key",
+				"models": ["glm-4.6", "glm-4.5", "glm-4.5-air"]
+			},
+			{
+				"name": "Z.ai Coding Subscription",
+				"baseUrl": "https://api.z.ai/api/coding/paas/v4/",
+				"apiKey": "your-z.ai-coding-api-key",
+				"models": ["glm-4.6", "glm-4.5", "glm-4.5-air"]
 			}
 		]
 	}
@@ -207,27 +219,65 @@ Nanocoder supports any OpenAI-compatible API through a unified provider configur
 
 - **llama.cpp server**: `"baseUrl": "http://localhost:8080/v1"`
 - **llama-swap**: `"baseUrl": "http://localhost:9292/v1"`
-- **Ollama (Local)**:
-
-  - First run: `ollama pull qwen2.5-coder:14b`
-  - Use: `"baseUrl": "http://localhost:11434/v1"`
-
-- **OpenRouter (Cloud)**:
-
-  - Use: `"baseUrl": "https://openrouter.ai/api/v1"`
-  - Requires: `"apiKey": "your-api-key"`
-
+- **Ollama (Local)**: `"baseUrl": "http://localhost:11434/v1"`
+- **OpenRouter (Cloud)**: `"baseUrl": "https://openrouter.ai/api/v1"`
 - **LM Studio**: `"baseUrl": "http://localhost:1234/v1"`
 - **vLLM**: `"baseUrl": "http://localhost:8000/v1"`
 - **LocalAI**: `"baseUrl": "http://localhost:8080/v1"`
 - **OpenAI**: `"baseUrl": "https://api.openai.com/v1"`
+- **Z.ai**: `"baseUrl": "https://api.z.ai/api/paas/v4/"`
+- **Z.ai Coding**: `"baseUrl": "https://api.z.ai/api/coding/paas/v4/"`
 
 **Provider Configuration:**
 
 - `name`: Display name used in `/provider` command
 - `baseUrl`: OpenAI-compatible API endpoint
-- `apiKey`: API key (optional for local servers)
+- `apiKey`: API key (optional, may not be required)
 - `models`: Available model list for `/model` command
+
+**Environment Variables:**
+
+Keep API keys out of version control using environment variables. Variables are loaded from shell environment (`.bashrc`, `.zshrc`) or `.env` file in your working directory.
+
+**Syntax:** `$VAR_NAME`, `${VAR_NAME}`, or `${VAR_NAME:-default}`
+**Supported in:** `baseUrl`, `apiKey`, `models`, MCP server `command`, `args`, `env`
+
+See `.env.example` for setup instructions
+
+**Timeout Configuration:**
+
+Nanocoder allows you to configure timeouts for your AI providers to handle long-running requests.
+
+- `requestTimeout`: (Optional) The application-level timeout in milliseconds. This is the total time the application will wait for a response from the provider. If not set, it defaults to 2 minutes (120,000 ms). Set to `-1` to disable this timeout.
+- `socketTimeout`: (Optional) The socket-level timeout in milliseconds. This controls the timeout for the underlying network connection. If not set, it will use the value of `requestTimeout`. Set to `-1` to disable this timeout.
+
+It is recommended to set both `requestTimeout` and `socketTimeout` to the same value for consistent behavior. For very long-running requests, you can disable timeouts by setting both to `-1`.
+
+- `connectionPool`: (Optional) An object to configure the connection pooling behavior for the underlying socket connection.
+  - `idleTimeout`: (Optional) The timeout in milliseconds for how long an idle connection should be kept alive in the pool. Defaults to 4 seconds (4,000 ms).
+  - `cumulativeMaxIdleTimeout`: (Optional) The maximum time in milliseconds a connection can be idle. Defaults to 10 minutes (600,000 ms).
+
+**Example with Timeouts:**
+
+```json
+{
+	"nanocoder": {
+		"providers": [
+			{
+				"name": "llama-cpp",
+				"baseUrl": "http://localhost:8080/v1",
+				"models": ["qwen3-coder:a3b", "deepseek-v3.1"],
+				"requestTimeout": -1,
+				"socketTimeout": -1,
+				"connectionPool": {
+					"idleTimeout": 30000,
+					"cumulativeMaxIdleTimeout": 3600000
+				}
+			}
+		]
+	}
+}
+```
 
 ### MCP (Model Context Protocol) Servers
 
@@ -266,6 +316,13 @@ Nanocoder supports connecting to MCP servers to extend its capabilities with add
 }
 ```
 
+**MCP Server Configuration:**
+
+- `name`: Display name for the MCP server
+- `command`: Executable command to start the server
+- `args`: Array of command-line arguments
+- `env`: Environment variables for the server process
+
 When MCP servers are configured, Nanocoder will:
 
 - Automatically connect to all configured servers on startup
@@ -280,30 +337,23 @@ Popular MCP servers:
 - **Memory**: Persistent context storage
 - [View more MCP servers](https://github.com/modelcontextprotocol/servers)
 
-> **Note**: The `agents.config.json` file should be placed in the directory where you run Nanocoder, allowing for project-by-project configuration with different models or API keys per repository.
+> **Note**: The default save place for configuration is `~/config/nanocoder/`. You can also place an `agents.config.json` where you run Nanocoder. This will **override** the default for project-by-project configuration with different models or API keys per repository.
 
 ### User Preferences
 
-Nanocoder automatically saves your preferences to remember your choices across sessions. Preferences are stored in `~/.nanocoder-preferences.json` in your home directory.
+Nanocoder automatically saves your preferences to remember your choices across sessions. Preferences are stored in `~/config/nanocoder/nanocoder-preferences.json`. You can also place a `nanocoder-preferences.json` where you run Nanocoder. This will **override** the default for project-by-project configuration.
 
 **What gets saved automatically:**
 
 - **Last provider used**: The AI provider you last selected (by name from your configuration)
 - **Last model per provider**: Your preferred model for each provider
 - **Session continuity**: Automatically switches back to your preferred provider/model when restarting
-
-**How it works:**
-
-- When you switch providers with `/provider`, your choice is saved
-- When you switch models with `/model`, the selection is saved for that specific provider
-- Next time you start Nanocoder, it will use your last provider and model
-- Each provider remembers its own preferred model independently
+- **Last theme used**: The theme you last selected
 
 **Manual management:**
 
 - View current preferences: The file is human-readable JSON
-- Reset preferences: Delete `~/.nanocoder-preferences.json` to start fresh
-- No manual editing needed: Use the `/provider` and `/model` commands instead
+- Reset preferences: Delete any `nanocoder-preferences.json` to start fresh
 
 ### Commands
 
@@ -314,6 +364,8 @@ Nanocoder automatically saves your preferences to remember your choices across s
 - `/clear` - Clear chat history
 - `/model` - Switch between available models
 - `/provider` - Switch between configured AI providers
+- `/status` - Display current status (CWD, provider, model, theme, available updates, AGENTS setup)
+- `/recommendations` - Get AI model recommendations based on your system capabilities (RAM, GPU, network)
 - `/mcp` - Show connected MCP servers and their tools
 - `/debug` - Toggle logging levels (silent/normal/verbose)
 - `/custom-commands` - List all custom commands
@@ -393,12 +445,15 @@ Generate comprehensive unit tests for {{component}}. Include:
 ### 🎯 Enhanced User Experience
 
 - **Smart autocomplete**: Tab completion for commands with real-time suggestions
-- **Prompt history**: Access and reuse previous prompts with `/history`
 - **Configurable logging**: Silent, normal, or verbose output levels
 - **Colorized output**: Syntax highlighting and structured display
 - **Session persistence**: Maintains context and preferences across sessions
 - **Real-time indicators**: Shows token usage, timing, and processing status
 - **First-time directory security disclaimer**: Prompts on first run and stores a per-project trust decision to prevent accidental exposure of local code or secrets.
+- **Development modes**: Three modes to control tool execution behavior (toggle with Shift+Tab)
+  - **Normal mode**: Standard tool confirmation flow - review each tool call before execution
+  - **Auto-accept mode**: Automatically accepts all tool calls without confirmation for faster workflows
+  - **Plan mode**: AI suggests actions but doesn't execute tools - useful for planning and exploration
 
 ### ⚙️ Developer Features
 
@@ -422,7 +477,7 @@ We're a small community-led team building Nanocoder and would love your help! Wh
 
 - Head to our GitHub issues or discussions to open and join current conversations with others in the community.
 
-**What does Nanocoder you need help with?**
+**What does Nanocoder need help with?**
 
 Nanocoder could benefit from help all across the board. Such as:
 
@@ -433,5 +488,6 @@ Nanocoder could benefit from help all across the board. Such as:
 - Reporting bugs or suggesting features
 - Marketing and getting the word out
 - Design and building more great software
+- Model cards for our recommendations database
 
 All contributions and community participation are welcome!

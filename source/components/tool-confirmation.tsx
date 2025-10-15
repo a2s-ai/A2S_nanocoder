@@ -2,11 +2,11 @@ import React from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {useTheme} from '../hooks/useTheme.js';
-import type {ToolCall} from '../types/core.js';
-import {toolFormatters} from '../tools/index.js';
-import {useTerminalWidth} from '../hooks/useTerminalWidth.js';
-import {getToolManager} from '../message-handler.js';
+import {useTheme} from '@/hooks/useTheme';
+import type {ToolCall} from '@/types/core';
+import {toolFormatters} from '@/tools/index';
+import {useTerminalWidth} from '@/hooks/useTerminalWidth';
+import {getToolManager} from '@/message-handler';
 
 interface ToolConfirmationProps {
 	toolCall: ToolCall;
@@ -31,14 +31,57 @@ export default function ToolConfirmation({
 	>(null);
 	const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
 	const [hasFormatterError, setHasFormatterError] = React.useState(false);
+	const [hasValidationError, setHasValidationError] = React.useState(false);
+	const [validationError, setValidationError] = React.useState<string | null>(
+		null,
+	);
 
 	// Get MCP tool info for display
 	const toolManager = getToolManager();
-	const mcpInfo = toolManager?.getMCPToolInfo(toolCall.function.name) || {isMCPTool: false};
+	const mcpInfo = toolManager?.getMCPToolInfo(toolCall.function.name) || {
+		isMCPTool: false,
+	};
 
 	// Load formatter preview
 	React.useEffect(() => {
 		const loadPreview = async () => {
+			// Run validator first if available
+			if (toolManager) {
+				const validator = toolManager.getToolValidator(toolCall.function.name);
+				if (validator) {
+					try {
+						// Parse arguments if they're a JSON string
+						let parsedArgs = toolCall.function.arguments;
+						if (typeof parsedArgs === 'string') {
+							try {
+								parsedArgs = JSON.parse(parsedArgs);
+							} catch (e) {
+								// If parsing fails, use as-is
+							}
+						}
+
+						const validationResult = await validator(parsedArgs);
+						if (!validationResult.valid) {
+							setValidationError(validationResult.error);
+							setHasValidationError(true);
+							setFormatterPreview(
+								<Text color={colors.error}>{validationResult.error}</Text>,
+							);
+							return;
+						}
+					} catch (error) {
+						console.error('Error running validator:', error);
+						const errorMsg = `Validation error: ${
+							error instanceof Error ? error.message : String(error)
+						}`;
+						setValidationError(errorMsg);
+						setHasValidationError(true);
+						setFormatterPreview(<Text color={colors.error}>{errorMsg}</Text>);
+						return;
+					}
+				}
+			}
+
 			const formatter = toolFormatters[toolCall.function.name];
 			if (formatter) {
 				setIsLoadingPreview(true);
@@ -58,9 +101,7 @@ export default function ToolConfirmation({
 					console.error('Error loading formatter preview:', error);
 					setHasFormatterError(true);
 					setFormatterPreview(
-						<Text color={colors.error}>
-							Error: {String(error)}
-						</Text>,
+						<Text color={colors.error}>Error: {String(error)}</Text>,
 					);
 				} finally {
 					setIsLoadingPreview(false);
@@ -69,7 +110,7 @@ export default function ToolConfirmation({
 		};
 
 		loadPreview();
-	}, [toolCall]);
+	}, [toolCall, toolManager]);
 
 	// Handle escape key to cancel
 	useInput((inputChar, key) => {
@@ -78,13 +119,13 @@ export default function ToolConfirmation({
 		}
 	});
 
-	// Auto-cancel if there's a formatter error
+	// Auto-cancel if there's a formatter error (not validation error)
 	React.useEffect(() => {
-		if (hasFormatterError) {
-			// Automatically cancel the tool execution
+		if (hasFormatterError && !hasValidationError) {
+			// Automatically cancel the tool execution only for formatter crashes
 			onConfirm(false);
 		}
-	}, [hasFormatterError, onConfirm]);
+	}, [hasFormatterError, hasValidationError, onConfirm]);
 
 	const options: ConfirmationOption[] = [
 		{label: '✓ Yes, execute this tool', value: true},
@@ -117,12 +158,18 @@ export default function ToolConfirmation({
 					</Box>
 				)}
 
-				{/* Only show approval prompt if there's no formatter error */}
-				{!hasFormatterError && (
+				{/* Only show approval prompt if there's no formatter crash */}
+				{!(hasFormatterError && !hasValidationError) && (
 					<>
 						<Box marginBottom={1}>
 							<Text color={colors.tool}>
-								Do you want to execute {mcpInfo.isMCPTool ? `MCP tool "${toolCall.function.name}" from server "${mcpInfo.serverName}"` : `tool "${toolCall.function.name}"`}?
+								{hasValidationError
+									? 'Validation failed. Do you still want to execute this tool?'
+									: `Do you want to execute ${
+											mcpInfo.isMCPTool
+												? `MCP tool "${toolCall.function.name}" from server "${mcpInfo.serverName}"`
+												: `tool "${toolCall.function.name}"`
+									  }?`}
 							</Text>
 						</Box>
 
@@ -134,10 +181,12 @@ export default function ToolConfirmation({
 					</>
 				)}
 
-				{/* Show automatic cancellation message for formatter errors */}
-				{hasFormatterError && (
+				{/* Show automatic cancellation message for formatter crashes only */}
+				{hasFormatterError && !hasValidationError && (
 					<Box marginTop={1}>
-						<Text color={colors.error}>Tool execution cancelled due to validation error.</Text>
+						<Text color={colors.error}>
+							Tool execution cancelled due to formatter error.
+						</Text>
 						<Text color={colors.secondary}>Press Escape to continue</Text>
 					</Box>
 				)}

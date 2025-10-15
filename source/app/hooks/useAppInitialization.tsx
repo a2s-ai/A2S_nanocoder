@@ -1,22 +1,19 @@
 import React, {useEffect} from 'react';
-import {LLMClient, ProviderType} from '../../types/core.js';
-import {ToolManager} from '../../tools/tool-manager.js';
-import {CustomCommandLoader} from '../../custom-commands/loader.js';
-import {CustomCommandExecutor} from '../../custom-commands/executor.js';
-import {createLLMClient} from '../../client-factory.js';
+import {LLMClient} from '@/types/core';
+import {ToolManager} from '@/tools/tool-manager';
+import {CustomCommandLoader} from '@/custom-commands/loader';
+import {CustomCommandExecutor} from '@/custom-commands/executor';
+import {createLLMClient, ConfigurationError} from '@/client-factory';
 import {
 	getLastUsedModel,
 	loadPreferences,
 	updateLastUsed,
-} from '../../config/preferences.js';
-import type {MCPInitResult, UserPreferences} from '../../types/index.js';
-import {
-	setToolManagerGetter,
-	setToolRegistryGetter,
-} from '../../message-handler.js';
-import {commandRegistry} from '../../commands.js';
-import {shouldLog} from '../../config/logging.js';
-import {appConfig} from '../../config/index.js';
+} from '@/config/preferences';
+import type {MCPInitResult, UserPreferences} from '@/types/index';
+import {setToolManagerGetter, setToolRegistryGetter} from '@/message-handler';
+import {commandRegistry} from '@/commands';
+import {shouldLog} from '@/config/logging';
+import {appConfig} from '@/config/index';
 import {
 	clearCommand,
 	commandsCommand,
@@ -28,23 +25,29 @@ import {
 	mcpCommand,
 	modelCommand,
 	providerCommand,
+	recommendationsCommand,
+	statusCommand,
 	themeCommand,
 	updateCommand,
-} from '../../commands/index.js';
-import SuccessMessage from '../../components/success-message.js';
-import ErrorMessage from '../../components/error-message.js';
-import InfoMessage from '../../components/info-message.js';
+} from '@/commands/index';
+import SuccessMessage from '@/components/success-message';
+import ErrorMessage from '@/components/error-message';
+import InfoMessage from '@/components/info-message';
+import ConfigErrorMessage from '@/components/config-error-message';
+import {checkForUpdates} from '@/utils/update-checker';
+import type {UpdateInfo} from '@/types/index';
 
 interface UseAppInitializationProps {
 	setClient: (client: LLMClient | null) => void;
 	setCurrentModel: (model: string) => void;
-	setCurrentProvider: (provider: ProviderType) => void;
+	setCurrentProvider: (provider: string) => void;
 	setToolManager: (manager: ToolManager | null) => void;
 	setCustomCommandLoader: (loader: CustomCommandLoader | null) => void;
 	setCustomCommandExecutor: (executor: CustomCommandExecutor | null) => void;
 	setCustomCommandCache: (cache: Map<string, any>) => void;
 	setStartChat: (start: boolean) => void;
 	setMcpInitialized: (initialized: boolean) => void;
+	setUpdateInfo: (info: UpdateInfo | null) => void;
 	addToChatQueue: (component: React.ReactNode) => void;
 	componentKeyCounter: number;
 	customCommandCache: Map<string, any>;
@@ -60,12 +63,13 @@ export function useAppInitialization({
 	setCustomCommandCache,
 	setStartChat,
 	setMcpInitialized,
+	setUpdateInfo,
 	addToChatQueue,
 	componentKeyCounter,
 	customCommandCache,
 }: UseAppInitializationProps) {
 	// Initialize LLM client and model
-	const initializeClient = async (preferredProvider?: ProviderType) => {
+	const initializeClient = async (preferredProvider?: string) => {
 		const {client, actualProvider} = await createLLMClient(preferredProvider);
 		setClient(client);
 		setCurrentProvider(actualProvider);
@@ -182,14 +186,26 @@ export function useAppInitialization({
 		try {
 			await initializeClient(preferences.lastProvider);
 		} catch (error) {
-			// Don't crash the app - just show the error and continue without a client
-			addToChatQueue(
-				<ErrorMessage
-					key={`init-error-${componentKeyCounter}`}
-					message={`No providers available: ${error}`}
-					hideBox={true}
-				/>,
-			);
+			// Check if it's a ConfigurationError and render the fancy component
+			if (error instanceof ConfigurationError) {
+				addToChatQueue(
+					<ConfigErrorMessage
+						key={`config-error-${componentKeyCounter}`}
+						configPath={error.configPath}
+						cwdPath={error.cwdPath}
+						isEmptyConfig={error.isEmptyConfig}
+					/>,
+				);
+			} else {
+				// Regular error - show simple error message
+				addToChatQueue(
+					<ErrorMessage
+						key={`init-error-${componentKeyCounter}`}
+						message={`No providers available: ${error}`}
+						hideBox={true}
+					/>,
+				);
+			}
 			// Leave client as null - the UI will handle this gracefully
 		}
 
@@ -250,10 +266,22 @@ export function useAppInitialization({
 				themeCommand,
 				exportCommand,
 				updateCommand,
+				recommendationsCommand,
+				statusCommand,
 			]);
 
 			// Now start with the properly initialized objects (excluding MCP)
 			await start(newToolManager, newCustomCommandLoader, preferences);
+
+			// Check for updates before showing UI
+			try {
+				const info = await checkForUpdates();
+				setUpdateInfo(info);
+			} catch (error) {
+				// Silent failure - don't show errors for update checks
+				setUpdateInfo(null);
+			}
+
 			setStartChat(true);
 
 			// Initialize MCP servers after UI is shown

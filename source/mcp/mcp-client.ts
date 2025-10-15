@@ -1,10 +1,10 @@
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import type {Tool} from '../types/index.js';
-import {shouldLog} from '../config/logging.js';
-import {logInfo, logError} from '../utils/message-queue.js';
+import type {Tool} from '@/types/index';
+import {shouldLog} from '@/config/logging';
+import {logInfo, logError} from '@/utils/message-queue';
 
-import type {MCPServer, MCPTool, MCPInitResult} from '../types/index.js';
+import type {MCPServer, MCPTool, MCPInitResult} from '@/types/index';
 
 export class MCPClient {
 	private clients: Map<string, Client> = new Map();
@@ -63,13 +63,13 @@ export class MCPClient {
 	}
 
 	async connectToServers(
-		servers: MCPServer[], 
-		onProgress?: (result: MCPInitResult) => void
+		servers: MCPServer[],
+		onProgress?: (result: MCPInitResult) => void,
 	): Promise<MCPInitResult[]> {
 		const results: MCPInitResult[] = [];
-		
+
 		// Connect to servers in parallel for better performance
-		const connectionPromises = servers.map(async (server) => {
+		const connectionPromises = servers.map(async server => {
 			try {
 				await this.connectToServer(server);
 				const tools = this.serverTools.get(server.name) || [];
@@ -95,7 +95,7 @@ export class MCPClient {
 
 		// Wait for all connections to complete
 		await Promise.all(connectionPromises);
-		
+
 		this.isConnected = true;
 		return results;
 	}

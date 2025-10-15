@@ -1,10 +1,11 @@
 import {resolve} from 'node:path';
-import {readFile} from 'node:fs/promises';
+import {readFile, access} from 'node:fs/promises';
+import {constants} from 'node:fs';
 import React from 'react';
 import {Text, Box} from 'ink';
-import type {ToolHandler, ToolDefinition} from '../types/index.js';
-import {ThemeContext} from '../hooks/useTheme.js';
-import ToolMessage from '../components/tool-message.js';
+import type {ToolHandler, ToolDefinition} from '@/types/index';
+import {ThemeContext} from '@/hooks/useTheme';
+import ToolMessage from '@/components/tool-message';
 
 const handler: ToolHandler = async (args: {
 	paths: string[];
@@ -12,10 +13,15 @@ const handler: ToolHandler = async (args: {
 	if (!Array.isArray(args.paths)) {
 		throw new Error('paths must be an array of strings');
 	}
-	const results = [] as {path: string; content: string; size: number; estimatedTokens: number}[];
+	const results = [] as {
+		path: string;
+		content: string;
+		size: number;
+		estimatedTokens: number;
+	}[];
 	let totalSize = 0;
 	let totalEstimatedTokens = 0;
-	
+
 	for (const p of args.paths) {
 		try {
 			const content = await readFile(resolve(p), 'utf-8');
@@ -34,10 +40,10 @@ const handler: ToolHandler = async (args: {
 			totalEstimatedTokens += estimatedTokens;
 
 			results.push({
-				path: p, 
+				path: p,
 				content: numberedContent.slice(0, -1),
 				size: fileSize,
-				estimatedTokens
+				estimatedTokens,
 			});
 		} catch (err) {
 			results.push({
@@ -46,96 +52,159 @@ const handler: ToolHandler = async (args: {
 					err instanceof Error ? err.message : String(err)
 				}`,
 				size: 0,
-				estimatedTokens: 0
+				estimatedTokens: 0,
 			});
 		}
 	}
-	
+
 	// Include summary in the output
 	const summary = {
 		totalFiles: args.paths.length,
 		totalSize,
 		totalEstimatedTokens,
-		files: results
+		files: results,
 	};
-	
+
 	return JSON.stringify(summary);
 };
 
 // Create a component that will re-render when theme changes
-const ReadManyFilesFormatter = React.memo(({args}: {args: any}) => {
-	const {colors} = React.useContext(ThemeContext)!;
-	const paths = args.paths || [];
+const ReadManyFilesFormatter = React.memo(
+	({
+		args,
+		fileInfo,
+	}: {
+		args: any;
+		fileInfo: {totalFiles: number; totalSize: number; totalTokens: number};
+	}) => {
+		const {colors} = React.useContext(ThemeContext)!;
+		const paths = args.paths || [];
 
-	if (!Array.isArray(paths)) {
+		if (!Array.isArray(paths)) {
+			const messageContent = (
+				<Box flexDirection="column">
+					<Text color={colors.tool}>⚒ read_many_files</Text>
+					<Text color={colors.error}>Error: paths must be an array</Text>
+				</Box>
+			);
+			return <ToolMessage message={messageContent} hideBox={true} />;
+		}
+
 		const messageContent = (
 			<Box flexDirection="column">
 				<Text color={colors.tool}>⚒ read_many_files</Text>
-				<Text color={colors.error}>Error: paths must be an array</Text>
+
+				<Box>
+					<Text color={colors.secondary}>Files: </Text>
+					<Text color={colors.white}>{fileInfo.totalFiles}</Text>
+				</Box>
+
+				<Box>
+					<Text color={colors.secondary}>Total size: </Text>
+					<Text color={colors.white}>
+						{fileInfo.totalSize} characters (~{fileInfo.totalTokens} tokens)
+					</Text>
+				</Box>
+
+				<Box marginTop={1} flexDirection="column">
+					<Text color={colors.white}>Paths:</Text>
+					{paths.map((path: string, i: number) => (
+						<Box key={i} marginLeft={2}>
+							<Text color={colors.secondary}>• </Text>
+							<Text color={colors.primary}>{path}</Text>
+						</Box>
+					))}
+				</Box>
 			</Box>
 		);
+
 		return <ToolMessage message={messageContent} hideBox={true} />;
+	},
+);
+
+const formatter = async (
+	args: any,
+	result?: string,
+): Promise<React.ReactElement> => {
+	// If result is an error message, don't try to read the files
+	if (result && result.startsWith('Error:')) {
+		return <></>;
 	}
 
-	// Calculate total file size and estimated tokens
-	const [fileInfo, setFileInfo] = React.useState({totalFiles: 0, totalSize: 0, totalTokens: 0});
+	// Calculate file info synchronously in the formatter so it's available when the component renders
+	let fileInfo = {
+		totalFiles: 0,
+		totalSize: 0,
+		totalTokens: 0,
+	};
 
-	React.useEffect(() => {
-		const calculateInfo = async () => {
-			let totalSize = 0;
-			for (const path of paths) {
-				try {
-					const content = await readFile(resolve(path), 'utf-8');
-					totalSize += content.length;
-				} catch (error) {
-					// Skip files that can't be read
-				}
+	const paths = args.paths || [];
+	if (Array.isArray(paths)) {
+		let totalSize = 0;
+		for (const path of paths) {
+			try {
+				const content = await readFile(resolve(path), 'utf-8');
+				totalSize += content.length;
+			} catch (error) {
+				// Skip files that can't be read
 			}
-			const estimatedTokens = Math.ceil(totalSize / 4);
-			setFileInfo({totalFiles: paths.length, totalSize, totalTokens: estimatedTokens});
+		}
+		const estimatedTokens = Math.ceil(totalSize / 4);
+		fileInfo = {
+			totalFiles: paths.length,
+			totalSize,
+			totalTokens: estimatedTokens,
 		};
-		calculateInfo();
-	}, [paths]);
+	}
 
-	const messageContent = (
-		<Box flexDirection="column">
-			<Text color={colors.tool}>⚒ read_many_files</Text>
-
-			<Box>
-				<Text color={colors.secondary}>Files: </Text>
-				<Text color={colors.white}>{fileInfo.totalFiles}</Text>
-			</Box>
-
-			<Box>
-				<Text color={colors.secondary}>Total size: </Text>
-				<Text color={colors.white}>
-					{fileInfo.totalSize} characters (~{fileInfo.totalTokens} tokens)
-				</Text>
-			</Box>
-
-			<Box marginTop={1} flexDirection="column">
-				<Text color={colors.white}>Paths:</Text>
-				{paths.map((path: string, i: number) => (
-					<Box key={i} marginLeft={2}>
-						<Text color={colors.secondary}>• </Text>
-						<Text color={colors.primary}>{path}</Text>
-					</Box>
-				))}
-			</Box>
-		</Box>
-	);
-
-	return <ToolMessage message={messageContent} hideBox={true} />;
-});
-
-const formatter = async (args: any): Promise<React.ReactElement> => {
-	return <ReadManyFilesFormatter args={args} />;
+	return <ReadManyFilesFormatter args={args} fileInfo={fileInfo} />;
 };
 
+const validator = async (args: {
+	paths: string[];
+}): Promise<{valid: true} | {valid: false; error: string}> => {
+	if (!Array.isArray(args.paths)) {
+		return {
+			valid: false,
+			error: '⚒ Paths must be an array of strings',
+		};
+	}
+
+	const missingFiles: string[] = [];
+
+	for (const path of args.paths) {
+		const absPath = resolve(path);
+		try {
+			await access(absPath, constants.F_OK);
+		} catch (error: any) {
+			if (error.code === 'ENOENT') {
+				missingFiles.push(path);
+			} else {
+				return {
+					valid: false,
+					error: `⚒ Cannot access file "${path}": ${error.message}`,
+				};
+			}
+		}
+	}
+
+	if (missingFiles.length > 0) {
+		const fileList = missingFiles.map(f => `  • ${f}`).join('\n');
+		return {
+			valid: false,
+			error: `⚒ The following file${missingFiles.length > 1 ? 's' : ''} do${
+				missingFiles.length > 1 ? '' : 'es'
+			} not exist:\n${fileList}`,
+		};
+	}
+
+	return {valid: true};
+};
 
 export const readManyFilesTool: ToolDefinition = {
 	handler,
 	formatter,
+	validator,
 	config: {
 		type: 'function',
 		function: {

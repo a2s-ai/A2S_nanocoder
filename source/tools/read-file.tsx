@@ -1,10 +1,11 @@
 import {resolve} from 'node:path';
-import {readFile} from 'node:fs/promises';
+import {readFile, access} from 'node:fs/promises';
+import {constants} from 'node:fs';
 import React from 'react';
 import {Text, Box} from 'ink';
-import type {ToolHandler, ToolDefinition} from '../types/index.js';
-import {ThemeContext} from '../hooks/useTheme.js';
-import ToolMessage from '../components/tool-message.js';
+import type {ToolHandler, ToolDefinition} from '@/types/index';
+import {ThemeContext} from '@/hooks/useTheme';
+import ToolMessage from '@/components/tool-message';
 
 const handler: ToolHandler = async (args: {path: string}): Promise<string> => {
 	const absPath = resolve(args.path);
@@ -39,63 +40,96 @@ const handler: ToolHandler = async (args: {path: string}): Promise<string> => {
 };
 
 // Create a component that will re-render when theme changes
-const ReadFileFormatter = React.memo(({args}: {args: any}) => {
-	const {colors} = React.useContext(ThemeContext)!;
-	const path = args.path || args.file_path || 'unknown';
-	const [fileInfo, setFileInfo] = React.useState({size: 0, tokens: 0});
+const ReadFileFormatter = React.memo(
+	({args, fileInfo}: {args: any; fileInfo: {size: number; tokens: number}}) => {
+		const {colors} = React.useContext(ThemeContext)!;
+		const path = args.path || args.file_path || 'unknown';
 
-	React.useEffect(() => {
-		const loadFileInfo = async () => {
-			try {
-				const content = await readFile(resolve(path), 'utf-8');
-				const fileSize = content.length;
-				const estimatedTokens = Math.ceil(fileSize / 4);
-				setFileInfo({size: fileSize, tokens: estimatedTokens});
-			} catch (error) {
-				setFileInfo({size: 0, tokens: 0});
-			}
-		};
-		loadFileInfo();
-	}, [path]);
+		const messageContent = (
+			<Box flexDirection="column">
+				<Text color={colors.tool}>⚒ read_file</Text>
 
-	const messageContent = (
-		<Box flexDirection="column">
-			<Text color={colors.tool}>⚒ read_file</Text>
+				<Box>
+					<Text color={colors.secondary}>Path: </Text>
+					<Text color={colors.white}>{path}</Text>
+				</Box>
 
-			<Box>
-				<Text color={colors.secondary}>Path: </Text>
-				<Text color={colors.white}>{path}</Text>
-			</Box>
-
-			<Box>
-				<Text color={colors.secondary}>Size: </Text>
-				<Text color={colors.white}>
-					{fileInfo.size} characters (~{fileInfo.tokens} tokens)
-				</Text>
-			</Box>
-
-			{(args.offset || args.limit) && (
-				<Box marginTop={1}>
-					<Text color={colors.secondary}>Range: </Text>
-					<Text color={colors.primary}>
-						{args.offset && `from line ${args.offset} `}
-						{args.limit && `(${args.limit} lines)`}
+				<Box>
+					<Text color={colors.secondary}>Size: </Text>
+					<Text color={colors.white}>
+						{fileInfo.size} characters (~{fileInfo.tokens} tokens)
 					</Text>
 				</Box>
-			)}
-		</Box>
-	);
 
-	return <ToolMessage message={messageContent} hideBox={true} />;
-});
+				{(args.offset || args.limit) && (
+					<Box marginTop={1}>
+						<Text color={colors.secondary}>Range: </Text>
+						<Text color={colors.primary}>
+							{args.offset && `from line ${args.offset} `}
+							{args.limit && `(${args.limit} lines)`}
+						</Text>
+					</Box>
+				)}
+			</Box>
+		);
 
-const formatter = async (args: any): Promise<React.ReactElement> => {
-	return <ReadFileFormatter args={args} />;
+		return <ToolMessage message={messageContent} hideBox={true} />;
+	},
+);
+
+const formatter = async (
+	args: any,
+	result?: string,
+): Promise<React.ReactElement> => {
+	// If result is an error message, don't try to read the file
+	if (result && result.startsWith('Error:')) {
+		return <></>;
+	}
+
+	// Load file info synchronously in the formatter so it's available when the component renders
+	let fileInfo = {size: 0, tokens: 0};
+	try {
+		const path = args.path || args.file_path;
+		if (path) {
+			await access(resolve(path), constants.F_OK);
+			const content = await readFile(resolve(path), 'utf-8');
+			const fileSize = content.length;
+			const estimatedTokens = Math.ceil(fileSize / 4);
+			fileInfo = {size: fileSize, tokens: estimatedTokens};
+		}
+	} catch (error) {
+		// File doesn't exist or can't be read - keep fileInfo as {size: 0, tokens: 0}
+	}
+
+	return <ReadFileFormatter args={args} fileInfo={fileInfo} />;
+};
+
+const validator = async (args: {
+	path: string;
+}): Promise<{valid: true} | {valid: false; error: string}> => {
+	const absPath = resolve(args.path);
+
+	try {
+		await access(absPath, constants.F_OK);
+		return {valid: true};
+	} catch (error: any) {
+		if (error.code === 'ENOENT') {
+			return {
+				valid: false,
+				error: `⚒ File "${args.path}" does not exist`,
+			};
+		}
+		return {
+			valid: false,
+			error: `⚒ Cannot access file "${args.path}": ${error.message}`,
+		};
+	}
 };
 
 export const readFileTool: ToolDefinition = {
 	handler,
 	formatter,
+	validator,
 	requiresConfirmation: false,
 	config: {
 		type: 'function',

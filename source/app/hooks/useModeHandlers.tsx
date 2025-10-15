@@ -1,23 +1,29 @@
-import {LLMClient, Message, ProviderType} from '../../types/core.js';
-import {createLLMClient} from '../../client-factory.js';
-import {updateLastUsed, savePreferences, loadPreferences} from '../../config/preferences.js';
-import SuccessMessage from '../../components/success-message.js';
-import ErrorMessage from '../../components/error-message.js';
+import {LLMClient, Message} from '@/types/core';
+import {createLLMClient} from '@/client-factory';
+import {
+	updateLastUsed,
+	savePreferences,
+	loadPreferences,
+} from '@/config/preferences';
+import SuccessMessage from '@/components/success-message';
+import ErrorMessage from '@/components/error-message';
 import React from 'react';
-import type {ThemePreset} from '../../types/ui.js';
+import type {ThemePreset} from '@/types/ui';
 
 interface UseModeHandlersProps {
 	client: LLMClient | null;
 	currentModel: string;
-	currentProvider: ProviderType;
+	currentProvider: string;
+	currentTheme: ThemePreset;
 	setClient: (client: LLMClient | null) => void;
 	setCurrentModel: (model: string) => void;
-	setCurrentProvider: (provider: ProviderType) => void;
+	setCurrentProvider: (provider: string) => void;
 	setCurrentTheme: (theme: ThemePreset) => void;
 	setMessages: (messages: Message[]) => void;
 	setIsModelSelectionMode: (mode: boolean) => void;
 	setIsProviderSelectionMode: (mode: boolean) => void;
 	setIsThemeSelectionMode: (mode: boolean) => void;
+	setIsRecommendationsMode: (mode: boolean) => void;
 	addToChatQueue: (component: React.ReactNode) => void;
 	componentKeyCounter: number;
 }
@@ -26,6 +32,7 @@ export function useModeHandlers({
 	client,
 	currentModel,
 	currentProvider,
+	currentTheme,
 	setClient,
 	setCurrentModel,
 	setCurrentProvider,
@@ -34,10 +41,10 @@ export function useModeHandlers({
 	setIsModelSelectionMode,
 	setIsProviderSelectionMode,
 	setIsThemeSelectionMode,
+	setIsRecommendationsMode,
 	addToChatQueue,
 	componentKeyCounter,
 }: UseModeHandlersProps) {
-
 	// Helper function to enter model selection mode
 	const enterModelSelectionMode = () => {
 		setIsModelSelectionMode(true);
@@ -54,6 +61,10 @@ export function useModeHandlers({
 			client.setModel(selectedModel);
 			setCurrentModel(selectedModel);
 
+			// Clear message history when switching models
+			setMessages([]);
+			await client.clearContext();
+
 			// Update preferences
 			updateLastUsed(currentProvider, selectedModel);
 
@@ -61,7 +72,7 @@ export function useModeHandlers({
 			addToChatQueue(
 				<SuccessMessage
 					key={`model-changed-${componentKeyCounter}`}
-					message={`Model changed to: ${selectedModel}`}
+					message={`Model changed to: ${selectedModel}. Chat history cleared.`}
 					hideBox={true}
 				/>,
 			);
@@ -75,14 +86,14 @@ export function useModeHandlers({
 	};
 
 	// Handle provider selection
-	const handleProviderSelect = async (selectedProvider: ProviderType) => {
+	const handleProviderSelect = async (selectedProvider: string) => {
 		if (selectedProvider !== currentProvider) {
 			try {
 				// Create new client for the selected provider
 				const {client: newClient, actualProvider} = await createLLMClient(
 					selectedProvider,
 				);
-				
+
 				// Check if we got the provider we requested
 				if (actualProvider !== selectedProvider) {
 					// Provider was forced to a different one (likely due to missing config)
@@ -95,7 +106,7 @@ export function useModeHandlers({
 					);
 					return; // Don't change anything
 				}
-				
+
 				setClient(newClient);
 				setCurrentProvider(actualProvider);
 
@@ -147,7 +158,7 @@ export function useModeHandlers({
 		const preferences = loadPreferences();
 		preferences.selectedTheme = selectedTheme;
 		savePreferences(preferences);
-		
+
 		// Update the theme state immediately for real-time switching
 		setCurrentTheme(selectedTheme);
 
@@ -168,15 +179,27 @@ export function useModeHandlers({
 		setIsThemeSelectionMode(false);
 	};
 
+	// Helper function to enter recommendations mode
+	const enterRecommendationsMode = () => {
+		setIsRecommendationsMode(true);
+	};
+
+	// Handle recommendations cancel
+	const handleRecommendationsCancel = () => {
+		setIsRecommendationsMode(false);
+	};
+
 	return {
 		enterModelSelectionMode,
 		enterProviderSelectionMode,
 		enterThemeSelectionMode,
+		enterRecommendationsMode,
 		handleModelSelect,
 		handleModelSelectionCancel,
 		handleProviderSelect,
 		handleProviderSelectionCancel,
 		handleThemeSelect,
 		handleThemeSelectionCancel,
+		handleRecommendationsCancel,
 	};
 }

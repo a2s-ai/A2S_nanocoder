@@ -1,6 +1,6 @@
-import React, {ReactNode} from 'react';
-import {ToolCall, LLMClient, ProviderType} from './core.js';
-import {CustomCommand} from './commands.js';
+import {ReactNode} from 'react';
+import {ToolCall, LLMClient} from '@/types/core';
+import {CustomCommand} from '@/types/commands';
 
 export interface AssistantMessageProps {
 	message: string;
@@ -14,7 +14,6 @@ export interface BashExecutionIndicatorProps {
 export interface ChatQueueProps {
 	staticComponents?: ReactNode[];
 	queuedComponents?: ReactNode[];
-	displayCount?: number;
 }
 
 export interface ChatProps {
@@ -45,8 +44,8 @@ export interface ModelOption {
 }
 
 export interface ProviderSelectorProps {
-	currentProvider: ProviderType;
-	onProviderSelect: (provider: ProviderType) => void;
+	currentProvider: string;
+	onProviderSelect: (provider: string) => void;
 	onCancel: () => void;
 }
 
@@ -57,17 +56,10 @@ export interface ProviderOption {
 }
 
 export interface StatusProps {
-	thinkingStats: any;
 	conversationContext: any;
 	currentProvider: string;
 	currentModel: string;
 	updateInfo?: any;
-}
-
-export interface ThinkingIndicatorProps {
-	contextSize: number;
-	totalTokensUsed: number;
-	tokensPerSecond?: number;
 }
 
 export interface ToolConfirmationProps {

@@ -1,4 +1,5 @@
 import {ChatOpenAI} from '@langchain/openai';
+import {Agent, fetch, RequestInfo, RequestInit} from 'undici';
 import {
 	AIMessage,
 	HumanMessage,
@@ -11,9 +12,78 @@ import type {
 	Tool,
 	LLMClient,
 	LangChainProviderConfig,
-} from './types/index.js';
-import {logError} from './utils/message-queue.js';
-import {XMLToolCallParser} from './tool-calling/xml-parser.js';
+} from '@/types/index';
+import {XMLToolCallParser} from '@/tool-calling/xml-parser';
+
+/**
+ * Parses LangChain/API errors into user-friendly messages
+ */
+function parseAPIError(error: unknown): string {
+	if (!(error instanceof Error)) {
+		return 'An unknown error occurred while communicating with the model';
+	}
+
+	const errorMessage = error.message;
+
+	// Extract status code and clean message from common error patterns
+	// Pattern: "400 400 Bad Request: message" or "Error: 400 message"
+	const statusMatch = errorMessage.match(
+		/(?:Error: )?(\d{3})\s+(?:\d{3}\s+)?(?:Bad Request|[^:]+):\s*(.+)/i,
+	);
+	if (statusMatch) {
+		const [, statusCode, message] = statusMatch;
+		const cleanMessage = message.trim();
+
+		switch (statusCode) {
+			case '400':
+				return `Bad request: ${cleanMessage}`;
+			case '401':
+				return 'Authentication failed: Invalid API key or credentials';
+			case '403':
+				return 'Access forbidden: Check your API permissions';
+			case '404':
+				return 'Model not found: The requested model may not exist or is unavailable';
+			case '429':
+				return 'Rate limit exceeded: Too many requests. Please wait and try again';
+			case '500':
+			case '502':
+			case '503':
+				return `Server error: ${cleanMessage}`;
+			default:
+				return `Request failed (${statusCode}): ${cleanMessage}`;
+		}
+	}
+
+	// Handle timeout errors
+	if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+		return 'Request timed out: The model took too long to respond';
+	}
+
+	// Handle network errors
+	if (
+		errorMessage.includes('ECONNREFUSED') ||
+		errorMessage.includes('connect')
+	) {
+		return 'Connection failed: Unable to reach the model server';
+	}
+
+	// Handle context length errors specifically
+	if (
+		errorMessage.includes('context length') ||
+		errorMessage.includes('too many tokens')
+	) {
+		return 'Context too large: Please reduce the conversation length or message size';
+	}
+
+	// Handle token limit errors
+	if (errorMessage.includes('reduce the number of tokens')) {
+		return 'Too many tokens: Please shorten your message or clear conversation history';
+	}
+
+	// If we can't parse it, return a cleaned up version
+	// Remove "Error: " prefix and any technical stack traces
+	return errorMessage.replace(/^Error:\s*/i, '').split('\n')[0];
+}
 
 /**
  * Converts our Message format to LangChain BaseMessage format
@@ -75,11 +145,31 @@ export class LangGraphClient implements LLMClient {
 	private availableModels: string[];
 	private providerConfig: LangChainProviderConfig;
 	private modelInfoCache: Map<string, any> = new Map();
+	private undiciAgent: Agent;
 
 	constructor(providerConfig: LangChainProviderConfig) {
 		this.providerConfig = providerConfig;
 		this.availableModels = providerConfig.models;
 		this.currentModel = providerConfig.models[0] || '';
+
+		const {requestTimeout, socketTimeout, connectionPool} = this.providerConfig;
+		const resolvedSocketTimeout =
+			socketTimeout === -1
+				? 0
+				: socketTimeout || requestTimeout === -1
+				? 0
+				: requestTimeout || 120000;
+
+		this.undiciAgent = new Agent({
+			connect: {
+				timeout: resolvedSocketTimeout,
+			},
+			bodyTimeout: resolvedSocketTimeout,
+			headersTimeout: resolvedSocketTimeout,
+			keepAliveTimeout: connectionPool?.idleTimeout,
+			keepAliveMaxTimeout: connectionPool?.cumulativeMaxIdleTimeout,
+		});
+
 		this.chatModel = this.createChatModel();
 	}
 
@@ -87,24 +177,39 @@ export class LangGraphClient implements LLMClient {
 		providerConfig: LangChainProviderConfig,
 	): Promise<LangGraphClient> {
 		const client = new LangGraphClient(providerConfig);
-
-		// Fetch OpenRouter model info if this is OpenRouter
-		await client.fetchModelInfo();
-
 		return client;
 	}
 
 	private createChatModel(): ChatOpenAI {
-		const {config} = this.providerConfig;
+		const {config, requestTimeout} = this.providerConfig;
 
-		const chatConfig = {
+		const customFetch = (url: RequestInfo, options: RequestInit = {}) => {
+			// Ensure the abort signal is preserved from options
+			return fetch(url, {
+				...options,
+				signal: options.signal, // Explicitly preserve the signal
+				dispatcher: this.undiciAgent,
+			});
+		};
+
+		const chatConfig: any = {
 			modelName: this.currentModel,
 			openAIApiKey: config.apiKey || 'dummy-key',
 			configuration: {
 				baseURL: config.baseURL,
+				fetch: customFetch,
 			},
 			...config,
 		};
+
+		if (requestTimeout === -1) {
+			chatConfig.timeout = undefined;
+		} else if (requestTimeout) {
+			chatConfig.timeout = requestTimeout;
+		} else {
+			// default
+			chatConfig.timeout = 120000; // 2 minutes
+		}
 
 		return new ChatOpenAI(chatConfig);
 	}
@@ -145,10 +250,22 @@ export class LangGraphClient implements LLMClient {
 		return this.availableModels;
 	}
 
-	async chat(messages: Message[], tools: Tool[]): Promise<any> {
+	async chat(
+		messages: Message[],
+		tools: Tool[],
+		signal?: AbortSignal,
+	): Promise<any> {
+		// Check if already aborted before starting
+		if (signal?.aborted) {
+			throw new Error('Operation was cancelled');
+		}
+
 		try {
 			const langchainMessages = messages.map(convertToLangChainMessage);
 			let result: AIMessage;
+
+			// Create options object with abort signal if provided
+			const invokeOptions = signal ? {signal} : {};
 
 			// Try to bind tools if available - fallback to XML parsing
 			if (tools.length > 0) {
@@ -167,16 +284,21 @@ export class LangGraphClient implements LLMClient {
 					const modelWithTools = this.chatModel.bindTools(langchainTools);
 					result = (await modelWithTools.invoke(
 						langchainMessages,
+						invokeOptions,
 					)) as AIMessage;
 				} catch (bindError) {
 					// Tool binding failed, fall back to base model
 					result = (await this.chatModel.invoke(
 						langchainMessages,
+						invokeOptions,
 					)) as AIMessage;
 				}
 			} else {
 				// No tools, use base model
-				result = (await this.chatModel.invoke(langchainMessages)) as AIMessage;
+				result = (await this.chatModel.invoke(
+					langchainMessages,
+					invokeOptions,
+				)) as AIMessage;
 			}
 
 			let convertedMessage = convertFromLangChainMessage(result);
@@ -213,85 +335,20 @@ export class LangGraphClient implements LLMClient {
 				],
 			};
 		} catch (error) {
-			logError(`LangGraph chat error: ${error}`);
-			return null;
-		}
-	}
-
-	async *chatStream(messages: Message[], tools: Tool[]): AsyncIterable<any> {
-		try {
-			// Use the non-streaming chat method which handles tool calls properly
-			const result = await this.chat(messages, tools);
-
-			if (!result) {
-				yield {done: true};
-				return;
+			// Check if this was a cancellation
+			if (error instanceof Error && error.name === 'AbortError') {
+				throw new Error('Operation was cancelled');
 			}
 
-			const message = result.choices[0].message;
+			// Parse and throw a user-friendly error
+			const userMessage = parseAPIError(error);
 
-			// If there are tool calls, yield them with preserved content
-			if (message.tool_calls && message.tool_calls.length > 0) {
-				yield {
-					message: {
-						content: message.content || '',
-						tool_calls: message.tool_calls,
-					},
-					done: false,
-				};
-			} else if (message.content) {
-				// If there's content, simulate streaming by yielding it in chunks
-				const content = message.content as string;
-				const chunkSize = 50;
-
-				for (let i = 0; i < content.length; i += chunkSize) {
-					const chunk = content.slice(i, i + chunkSize);
-					yield {
-						message: {
-							content: chunk,
-						},
-						done: false,
-					};
-
-					// Small delay to simulate streaming
-					await new Promise(resolve => setTimeout(resolve, 10));
-				}
-
-				yield {done: true};
-			} else {
-				yield {done: true};
-			}
-		} catch (error) {
-			logError(`LangGraph stream error: ${error}`);
-			return;
+			// Throw cleaned error for user display
+			throw new Error(userMessage);
 		}
 	}
 
 	async clearContext(): Promise<void> {
 		// No internal state to clear in unified approach
-	}
-
-	private async fetchModelInfo(): Promise<void> {
-		if (this.providerConfig.name.toLowerCase() !== 'openrouter') {
-			return;
-		}
-
-		try {
-			const response = await fetch('https://openrouter.ai/api/v1/models', {
-				headers: {
-					Authorization: `Bearer ${this.providerConfig.config.apiKey}`,
-					'Content-Type': 'application/json',
-				},
-			});
-
-			if (response.ok) {
-				const data: any = await response.json();
-				for (const model of data.data) {
-					this.modelInfoCache.set(model.id, model);
-				}
-			}
-		} catch (error) {
-			logError(`Failed to fetch OpenRouter model info: ${error}`);
-		}
 	}
 }
