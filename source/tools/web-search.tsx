@@ -44,7 +44,7 @@ const handler: ToolHandler = async (args: SearchArgs): Promise<string> => {
 		const results: SearchResult[] = [];
 
 		// Brave Search uses specific result containers
-		$('[data-type="web"]').each((i, elem) => {
+		$('[data-type="web"]').each((_i, elem) => {
 			if (results.length >= maxResults) return;
 
 			const $elem = $(elem);
@@ -84,19 +84,25 @@ const handler: ToolHandler = async (args: SearchArgs): Promise<string> => {
 		}
 
 		return formattedResults;
-	} catch (error: any) {
-		if (error.name === 'AbortError') {
+	} catch (error: unknown) {
+		if (error instanceof Error && error.name === 'AbortError') {
 			throw new Error('Search request timeout');
 		}
 
-		throw new Error(`Web search failed: ${error.message}`);
+		const errorMessage =
+			error instanceof Error ? error.message : 'Unknown error';
+		throw new Error(`Web search failed: ${errorMessage}`);
 	}
 };
 
 // Create a component that will re-render when theme changes
 const WebSearchFormatter = React.memo(
-	({args, result}: {args: any; result?: string}) => {
-		const {colors} = React.useContext(ThemeContext)!;
+	({args, result}: {args: SearchArgs; result?: string}) => {
+		const themeContext = React.useContext(ThemeContext);
+		if (!themeContext) {
+			throw new Error('ThemeContext not found');
+		}
+		const {colors} = themeContext;
 		const query = args.query || 'unknown';
 		const maxResults = args.max_results ?? 5;
 
@@ -145,35 +151,32 @@ const WebSearchFormatter = React.memo(
 	},
 );
 
-const formatter = async (
-	args: any,
-	result?: string,
-): Promise<React.ReactElement> => {
+const formatter = (args: SearchArgs, result?: string): React.ReactElement => {
 	return <WebSearchFormatter args={args} result={result} />;
 };
 
-const validator = async (
+const validator = (
 	args: SearchArgs,
 ): Promise<{valid: true} | {valid: false; error: string}> => {
 	const query = args.query?.trim();
 
 	// Check if query is empty
 	if (!query) {
-		return {
+		return Promise.resolve({
 			valid: false,
 			error: '⚒ Search query cannot be empty',
-		};
+		});
 	}
 
 	// Check query length (reasonable limit)
 	if (query.length > 500) {
-		return {
+		return Promise.resolve({
 			valid: false,
 			error: `⚒ Search query is too long (${query.length} characters). Maximum length is 500 characters.`,
-		};
+		});
 	}
 
-	return {valid: true};
+	return Promise.resolve({valid: true});
 };
 
 export const webSearchTool: ToolDefinition = {

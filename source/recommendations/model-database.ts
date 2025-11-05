@@ -1,6 +1,6 @@
 import {ModelEntry} from '@/types/index';
 
-export const MODEL_DATABASE: ModelEntry[] = [
+const MODEL_DATABASE: ModelEntry[] = [
 	{
 		name: 'qwen2.5-coder:0.5b',
 		author: 'Alibaba',
@@ -378,6 +378,20 @@ export const MODEL_DATABASE: ModelEntry[] = [
 		},
 		costType: 'paid',
 		costDetails: 'API: from $0.25/M input, $2/M output.',
+	},
+	{
+		name: 'claude-haiku-4.5',
+		author: 'Anthropic',
+		size: 'Unknown',
+		local: false,
+		api: true,
+		quality: {
+			agentic: 7,
+			local: 0,
+			cost: 7,
+		},
+		costType: 'paid',
+		costDetails: 'API: from $1/M input, $5/M output.',
 	},
 	{
 		name: 'claude-sonnet-4.5',

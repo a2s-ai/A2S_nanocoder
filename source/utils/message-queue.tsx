@@ -2,7 +2,7 @@ import React from 'react';
 import ErrorMessage from '@/components/error-message';
 import InfoMessage from '@/components/info-message';
 import SuccessMessage from '@/components/success-message';
-import type {MessageType, MessageQueueItem} from '@/types/index';
+import type {MessageType} from '@/types/index';
 
 // Global message queue function - will be set by App component
 let globalAddToChatQueue: ((component: React.ReactNode) => void) | null = null;
@@ -22,7 +22,7 @@ function getNextKey(): string {
 }
 
 // Add message to chat queue
-export function addMessageToQueue(
+function addMessageToQueue(
 	type: MessageType,
 	message: string,
 	hideBox: boolean = true,
@@ -63,8 +63,4 @@ export function logInfo(message: string, hideBox: boolean = true) {
 
 export function logError(message: string, hideBox: boolean = true) {
 	addMessageToQueue('error', message, hideBox);
-}
-
-export function logSuccess(message: string, hideBox: boolean = true) {
-	addMessageToQueue('success', message, hideBox);
 }

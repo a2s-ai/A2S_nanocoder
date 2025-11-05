@@ -5,6 +5,7 @@ import {
 	savePreferences,
 	loadPreferences,
 } from '@/config/preferences';
+import {reloadAppConfig} from '@/config/index';
 import SuccessMessage from '@/components/success-message';
 import ErrorMessage from '@/components/error-message';
 import React from 'react';
@@ -24,6 +25,7 @@ interface UseModeHandlersProps {
 	setIsProviderSelectionMode: (mode: boolean) => void;
 	setIsThemeSelectionMode: (mode: boolean) => void;
 	setIsRecommendationsMode: (mode: boolean) => void;
+	setIsConfigWizardMode: (mode: boolean) => void;
 	addToChatQueue: (component: React.ReactNode) => void;
 	componentKeyCounter: number;
 }
@@ -32,7 +34,7 @@ export function useModeHandlers({
 	client,
 	currentModel,
 	currentProvider,
-	currentTheme,
+	currentTheme: _currentTheme,
 	setClient,
 	setCurrentModel,
 	setCurrentProvider,
@@ -42,6 +44,7 @@ export function useModeHandlers({
 	setIsProviderSelectionMode,
 	setIsThemeSelectionMode,
 	setIsRecommendationsMode,
+	setIsConfigWizardMode,
 	addToChatQueue,
 	componentKeyCounter,
 }: UseModeHandlersProps) {
@@ -134,7 +137,9 @@ export function useModeHandlers({
 				addToChatQueue(
 					<ErrorMessage
 						key={`provider-error-${componentKeyCounter}`}
-						message={`Failed to change provider to ${selectedProvider}: ${error}`}
+						message={`Failed to change provider to ${selectedProvider}: ${String(
+							error,
+						)}`}
 						hideBox={true}
 					/>,
 				);
@@ -189,11 +194,73 @@ export function useModeHandlers({
 		setIsRecommendationsMode(false);
 	};
 
+	// Helper function to enter config wizard mode
+	const enterConfigWizardMode = () => {
+		setIsConfigWizardMode(true);
+	};
+
+	// Handle config wizard cancel/complete
+	const handleConfigWizardComplete = async (configPath?: string) => {
+		setIsConfigWizardMode(false);
+		if (configPath) {
+			addToChatQueue(
+				<SuccessMessage
+					key={`config-wizard-complete-${componentKeyCounter}`}
+					message={`Configuration saved to: ${configPath}.`}
+					hideBox={true}
+				/>,
+			);
+
+			// Reload the app configuration to pick up the newly saved config
+			reloadAppConfig();
+
+			// Reinitialize client with new configuration
+			try {
+				const preferences = loadPreferences();
+				const {client: newClient, actualProvider} = await createLLMClient(
+					preferences.lastProvider,
+				);
+				setClient(newClient);
+				setCurrentProvider(actualProvider);
+
+				const newModel = newClient.getCurrentModel();
+				setCurrentModel(newModel);
+
+				// Clear message history when switching providers
+				setMessages([]);
+				await newClient.clearContext();
+
+				addToChatQueue(
+					<SuccessMessage
+						key={`config-init-${componentKeyCounter}`}
+						message={`Ready! Using provider: ${actualProvider}, model: ${newModel}`}
+						hideBox={true}
+					/>,
+				);
+			} catch (error) {
+				addToChatQueue(
+					<ErrorMessage
+						key={`config-init-error-${componentKeyCounter}`}
+						message={`Failed to initialize with new configuration: ${String(
+							error,
+						)}`}
+						hideBox={true}
+					/>,
+				);
+			}
+		}
+	};
+
+	const handleConfigWizardCancel = () => {
+		setIsConfigWizardMode(false);
+	};
+
 	return {
 		enterModelSelectionMode,
 		enterProviderSelectionMode,
 		enterThemeSelectionMode,
 		enterRecommendationsMode,
+		enterConfigWizardMode,
 		handleModelSelect,
 		handleModelSelectionCancel,
 		handleProviderSelect,
@@ -201,5 +268,7 @@ export function useModeHandlers({
 		handleThemeSelect,
 		handleThemeSelectionCancel,
 		handleRecommendationsCancel,
+		handleConfigWizardComplete,
+		handleConfigWizardCancel,
 	};
 }

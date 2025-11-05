@@ -10,14 +10,13 @@ import {
 	updateLastUsed,
 } from '@/config/preferences';
 import type {MCPInitResult, UserPreferences} from '@/types/index';
+import type {CustomCommand} from '@/types/commands';
 import {setToolManagerGetter, setToolRegistryGetter} from '@/message-handler';
 import {commandRegistry} from '@/commands';
-import {shouldLog} from '@/config/logging';
 import {appConfig} from '@/config/index';
 import {
 	clearCommand,
 	commandsCommand,
-	debugCommand,
 	exitCommand,
 	exportCommand,
 	helpCommand,
@@ -26,6 +25,7 @@ import {
 	modelCommand,
 	providerCommand,
 	recommendationsCommand,
+	setupConfigCommand,
 	statusCommand,
 	themeCommand,
 	updateCommand,
@@ -33,7 +33,6 @@ import {
 import SuccessMessage from '@/components/success-message';
 import ErrorMessage from '@/components/error-message';
 import InfoMessage from '@/components/info-message';
-import ConfigErrorMessage from '@/components/config-error-message';
 import {checkForUpdates} from '@/utils/update-checker';
 import type {UpdateInfo} from '@/types/index';
 
@@ -44,13 +43,14 @@ interface UseAppInitializationProps {
 	setToolManager: (manager: ToolManager | null) => void;
 	setCustomCommandLoader: (loader: CustomCommandLoader | null) => void;
 	setCustomCommandExecutor: (executor: CustomCommandExecutor | null) => void;
-	setCustomCommandCache: (cache: Map<string, any>) => void;
+	setCustomCommandCache: (cache: Map<string, CustomCommand>) => void;
 	setStartChat: (start: boolean) => void;
 	setMcpInitialized: (initialized: boolean) => void;
 	setUpdateInfo: (info: UpdateInfo | null) => void;
 	addToChatQueue: (component: React.ReactNode) => void;
 	componentKeyCounter: number;
-	customCommandCache: Map<string, any>;
+	customCommandCache: Map<string, CustomCommand>;
+	setIsConfigWizardMode: (mode: boolean) => void;
 }
 
 export function useAppInitialization({
@@ -60,13 +60,14 @@ export function useAppInitialization({
 	setToolManager,
 	setCustomCommandLoader,
 	setCustomCommandExecutor,
-	setCustomCommandCache,
+	setCustomCommandCache: _setCustomCommandCache,
 	setStartChat,
 	setMcpInitialized,
 	setUpdateInfo,
 	addToChatQueue,
 	componentKeyCounter,
 	customCommandCache,
+	setIsConfigWizardMode,
 }: UseAppInitializationProps) {
 	// Initialize LLM client and model
 	const initializeClient = async (preferredProvider?: string) => {
@@ -97,8 +98,8 @@ export function useAppInitialization({
 	};
 
 	// Load and cache custom commands
-	const loadCustomCommands = async (loader: CustomCommandLoader) => {
-		await loader.loadCommands();
+	const loadCustomCommands = (loader: CustomCommandLoader) => {
+		loader.loadCommands();
 		const customCommands = loader.getAllCommands() || [];
 
 		// Populate command cache for better performance
@@ -113,11 +114,11 @@ export function useAppInitialization({
 			}
 		}
 
-		if (customCommands.length > 0 && shouldLog('info')) {
+		if (customCommands.length > 0) {
 			addToChatQueue(
-				<InfoMessage
+				<SuccessMessage
 					key={`custom-commands-loaded-${componentKeyCounter}`}
-					message={`Loaded ${customCommands.length} custom commands from .nanocoder/commands`}
+					message={`Loaded ${customCommands.length} custom commands from .nanocoder/commands...`}
 					hideBox={true}
 				/>,
 			);
@@ -165,7 +166,7 @@ export function useAppInitialization({
 				addToChatQueue(
 					<ErrorMessage
 						key={`mcp-fatal-error-${componentKeyCounter}`}
-						message={`Failed to initialize MCP servers: ${error}`}
+						message={`Failed to initialize MCP servers: ${String(error)}`}
 						hideBox={true}
 					/>,
 				);
@@ -186,22 +187,25 @@ export function useAppInitialization({
 		try {
 			await initializeClient(preferences.lastProvider);
 		} catch (error) {
-			// Check if it's a ConfigurationError and render the fancy component
+			// Check if it's a ConfigurationError - launch wizard for any config issue
 			if (error instanceof ConfigurationError) {
 				addToChatQueue(
-					<ConfigErrorMessage
+					<InfoMessage
 						key={`config-error-${componentKeyCounter}`}
-						configPath={error.configPath}
-						cwdPath={error.cwdPath}
-						isEmptyConfig={error.isEmptyConfig}
+						message="Configuration needed. Let's set up your providers..."
+						hideBox={true}
 					/>,
 				);
+				// Trigger wizard mode after showing UI
+				setTimeout(() => {
+					setIsConfigWizardMode(true);
+				}, 100);
 			} else {
 				// Regular error - show simple error message
 				addToChatQueue(
 					<ErrorMessage
 						key={`init-error-${componentKeyCounter}`}
-						message={`No providers available: ${error}`}
+						message={`No providers available: ${String(error)}`}
 						hideBox={true}
 					/>,
 				);
@@ -210,12 +214,12 @@ export function useAppInitialization({
 		}
 
 		try {
-			await loadCustomCommands(newCustomCommandLoader);
+			loadCustomCommands(newCustomCommandLoader);
 		} catch (error) {
 			addToChatQueue(
 				<ErrorMessage
 					key={`commands-error-${componentKeyCounter}`}
-					message={`Failed to load custom commands: ${error}`}
+					message={`Failed to load custom commands: ${String(error)}`}
 					hideBox={true}
 				/>,
 			);
@@ -260,7 +264,6 @@ export function useAppInitialization({
 				modelCommand,
 				providerCommand,
 				commandsCommand,
-				debugCommand,
 				mcpCommand,
 				initCommand,
 				themeCommand,
@@ -268,6 +271,7 @@ export function useAppInitialization({
 				updateCommand,
 				recommendationsCommand,
 				statusCommand,
+				setupConfigCommand,
 			]);
 
 			// Now start with the properly initialized objects (excluding MCP)
@@ -277,7 +281,7 @@ export function useAppInitialization({
 			try {
 				const info = await checkForUpdates();
 				setUpdateInfo(info);
-			} catch (error) {
+			} catch {
 				// Silent failure - don't show errors for update checks
 				setUpdateInfo(null);
 			}
@@ -288,7 +292,8 @@ export function useAppInitialization({
 			await initializeMCPServers(newToolManager);
 		};
 
-		initializeApp();
+		void initializeApp();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	return {

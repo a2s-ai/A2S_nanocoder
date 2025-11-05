@@ -267,7 +267,11 @@ export class ProjectAnalyzer {
 		if (existsSync(packageJsonPath)) {
 			try {
 				const content = readFileSync(packageJsonPath, 'utf-8');
-				const pkg = JSON.parse(content);
+				const pkg = JSON.parse(content) as {
+					name?: string;
+					description?: string;
+					repository?: string | {url?: string};
+				};
 
 				if (pkg.name) projectName = pkg.name;
 				if (pkg.description) description = pkg.description;
@@ -278,7 +282,7 @@ export class ProjectAnalyzer {
 						repository = pkg.repository.url;
 					}
 				}
-			} catch (error) {
+			} catch {
 				// Ignore parsing errors
 			}
 		}
@@ -294,7 +298,7 @@ export class ProjectAnalyzer {
 
 					if (nameMatch) projectName = nameMatch[1];
 					if (descMatch) description = descMatch[1];
-				} catch (error) {
+				} catch {
 					// Ignore parsing errors
 				}
 			}
@@ -322,7 +326,7 @@ export class ProjectAnalyzer {
 							}
 						}
 						break;
-					} catch (error) {
+					} catch {
 						// Ignore parsing errors
 					}
 				}
@@ -339,18 +343,31 @@ export class ProjectAnalyzer {
 		languages: DetectedLanguages,
 		dependencies: ProjectDependencies,
 	): string {
+		interface Framework {
+			category:
+				| 'web'
+				| 'mobile'
+				| 'desktop'
+				| 'backend'
+				| 'testing'
+				| 'build'
+				| 'other';
+			name: string;
+			confidence: 'high' | 'medium' | 'low';
+		}
+
 		// Use framework-based detection first
 		const webFrameworks = dependencies.frameworks.filter(
-			f => f.category === 'web',
+			(f): f is Framework => (f as Framework).category === 'web',
 		);
 		const backendFrameworks = dependencies.frameworks.filter(
-			f => f.category === 'backend',
+			(f): f is Framework => (f as Framework).category === 'backend',
 		);
 		const mobileFrameworks = dependencies.frameworks.filter(
-			f => f.category === 'mobile',
+			(f): f is Framework => (f as Framework).category === 'mobile',
 		);
 		const desktopFrameworks = dependencies.frameworks.filter(
-			f => f.category === 'desktop',
+			(f): f is Framework => (f as Framework).category === 'desktop',
 		);
 
 		if (mobileFrameworks.length > 0) {
@@ -395,7 +412,9 @@ export class ProjectAnalyzer {
 					conventions.push('Use PascalCase for classes and components');
 					conventions.push('Use const/let instead of var');
 					if (
-						analysis.dependencies.frameworks.some(f => f.name.includes('React'))
+						analysis.dependencies.frameworks.some((f: unknown) =>
+							(f as {name: string}).name.includes('React'),
+						)
 					) {
 						conventions.push('Use functional components with hooks');
 						conventions.push('Follow React naming conventions');

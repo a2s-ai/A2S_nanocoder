@@ -1,16 +1,9 @@
 export type MessageType = 'info' | 'error' | 'success';
 
-export interface MessageQueueItem {
-	type: MessageType;
-	message: string;
-	key?: string;
-	hideBox?: boolean;
-}
-
 export interface NpmRegistryResponse {
 	version: string;
 	name: string;
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 export interface UpdateInfo {

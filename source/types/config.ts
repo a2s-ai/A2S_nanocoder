@@ -11,7 +11,28 @@ export interface LangChainProviderConfig {
 		idleTimeout?: number;
 		cumulativeMaxIdleTimeout?: number;
 	};
-	config: Record<string, any>;
+	config: {
+		baseURL?: string;
+		apiKey?: string;
+		[key: string]: unknown;
+	};
+}
+
+// Provider configuration type for wizard and config building
+export interface ProviderConfig {
+	name: string;
+	baseUrl?: string;
+	apiKey?: string;
+	models: string[];
+	requestTimeout?: number;
+	socketTimeout?: number;
+	organizationId?: string;
+	timeout?: number;
+	connectionPool?: {
+		idleTimeout?: number;
+		cumulativeMaxIdleTimeout?: number;
+	};
+	[key: string]: unknown; // Allow additional provider-specific config
 }
 
 export interface AppConfig {
@@ -27,7 +48,7 @@ export interface AppConfig {
 			idleTimeout?: number;
 			cumulativeMaxIdleTimeout?: number;
 		};
-		[key: string]: any; // Allow additional provider-specific config
+		[key: string]: unknown; // Allow additional provider-specific config
 	}[];
 
 	mcpServers?: {
@@ -48,5 +69,3 @@ export interface UserPreferences {
 	selectedTheme?: ThemePreset;
 	trustedDirectories?: string[];
 }
-
-export type LogLevel = 'silent' | 'normal' | 'verbose';

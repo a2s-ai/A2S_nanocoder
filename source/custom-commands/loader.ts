@@ -18,7 +18,7 @@ export class CustomCommandLoader {
 	/**
 	 * Load all custom commands from the .nanocoder/commands directory
 	 */
-	async loadCommands(): Promise<void> {
+	loadCommands(): void {
 		this.commands.clear();
 		this.aliases.clear();
 
@@ -79,7 +79,9 @@ export class CustomCommandLoader {
 				}
 			}
 		} catch (error) {
-			logError(`Failed to load custom command from ${filePath}: ${error}`);
+			logError(
+				`Failed to load custom command from ${filePath}: ${String(error)}`,
+			);
 		}
 	}
 
@@ -115,14 +117,14 @@ export class CustomCommandLoader {
 		const lowerPrefix = prefix.toLowerCase();
 
 		// Add matching command names
-		for (const [name, command] of this.commands.entries()) {
+		for (const [name, _command] of this.commands.entries()) {
 			if (name.toLowerCase().startsWith(lowerPrefix)) {
 				suggestions.push(name);
 			}
 		}
 
 		// Add matching aliases
-		for (const [alias, target] of this.aliases.entries()) {
+		for (const [alias, _target] of this.aliases.entries()) {
 			if (
 				alias.toLowerCase().startsWith(lowerPrefix) &&
 				!suggestions.includes(alias)

@@ -2,9 +2,8 @@ import {useState, useEffect, useCallback} from 'react';
 import path from 'path';
 import {loadPreferences, savePreferences} from '@/config/preferences';
 import {logError} from '@/utils/message-queue';
-import {shouldLog} from '@/config/logging';
 
-export interface UseDirectoryTrustReturn {
+interface UseDirectoryTrustReturn {
 	isTrusted: boolean;
 	handleConfirmTrust: () => void;
 	isTrustLoading: boolean;
@@ -27,7 +26,7 @@ export function useDirectoryTrust(
 
 	// Check if directory is trusted on mount and when directory changes
 	useEffect(() => {
-		const checkTrustStatus = async () => {
+		const checkTrustStatus = () => {
 			try {
 				setIsLoading(true);
 				setError(null);
@@ -47,9 +46,7 @@ export function useDirectoryTrust(
 					err instanceof Error ? err.message : 'Unknown error occurred';
 				setError(`Failed to check directory trust status: ${errorMessage}`);
 
-				if (shouldLog('warn')) {
-					logError(`useDirectoryTrust: ${errorMessage}`);
-				}
+				logError(`useDirectoryTrust: ${errorMessage}`);
 			} finally {
 				setIsLoading(false);
 			}
@@ -79,11 +76,9 @@ export function useDirectoryTrust(
 				preferences.trustedDirectories = trustedDirectories;
 				savePreferences(preferences);
 
-				if (shouldLog('info')) {
-					logError(
-						`useDirectoryTrust (info): Directory added to trusted list: ${normalizedDirectory}`,
-					);
-				}
+				logError(
+					`useDirectoryTrust (info): Directory added to trusted list: ${normalizedDirectory}`,
+				);
 			}
 
 			setIsTrusted(true);
@@ -92,9 +87,7 @@ export function useDirectoryTrust(
 				err instanceof Error ? err.message : 'Unknown error occurred';
 			setError(`Failed to save directory trust: ${errorMessage}`);
 
-			if (shouldLog('warn')) {
-				logError(`useDirectoryTrust: ${errorMessage}`);
-			}
+			logError(`useDirectoryTrust: ${errorMessage}`);
 		}
 	}, [directory]);
 

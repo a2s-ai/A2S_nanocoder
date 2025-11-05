@@ -1,7 +1,7 @@
 import {readFileSync, existsSync} from 'fs';
 import {join} from 'path';
 
-export interface FrameworkInfo {
+interface FrameworkInfo {
 	name: string;
 	version?: string;
 	category:
@@ -15,12 +15,19 @@ export interface FrameworkInfo {
 	confidence: 'high' | 'medium' | 'low';
 }
 
-export interface BuildInfo {
+interface BuildInfo {
 	scripts?: {[script: string]: string};
 	buildCommand?: string;
 	testCommand?: string;
 	devCommand?: string;
 	startCommand?: string;
+}
+
+interface PackageJson {
+	scripts?: {[script: string]: string};
+	dependencies?: {[dep: string]: string};
+	devDependencies?: {[dep: string]: string};
+	peerDependencies?: {[dep: string]: string};
 }
 
 export interface ProjectDependencies {
@@ -124,7 +131,7 @@ export class FrameworkDetector {
 
 		try {
 			const content = readFileSync(packageJsonPath, 'utf-8');
-			const packageJson = JSON.parse(content);
+			const packageJson = JSON.parse(content) as PackageJson;
 
 			// Extract build info
 			if (packageJson.scripts) {
@@ -144,7 +151,7 @@ export class FrameworkDetector {
 			};
 
 			for (const [depName, version] of Object.entries(allDeps)) {
-				const framework = this.matchFramework(depName, version as string);
+				const framework = this.matchFramework(depName, version);
 				if (framework) {
 					result.frameworks.push(framework);
 
@@ -156,7 +163,7 @@ export class FrameworkDetector {
 					}
 				}
 			}
-		} catch (error) {
+		} catch {
 			// Ignore parsing errors
 		}
 	}
@@ -184,7 +191,7 @@ export class FrameworkDetector {
 					result.frameworks.push(framework);
 				}
 			}
-		} catch (error) {
+		} catch {
 			// Ignore parsing errors
 		}
 	}
@@ -244,7 +251,7 @@ export class FrameworkDetector {
 					confidence: 'high',
 				});
 			}
-		} catch (error) {
+		} catch {
 			// Ignore parsing errors
 		}
 	}
@@ -284,7 +291,7 @@ export class FrameworkDetector {
 					confidence: 'high',
 				});
 			}
-		} catch (error) {
+		} catch {
 			// Ignore parsing errors
 		}
 	}

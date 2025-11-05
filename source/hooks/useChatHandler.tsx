@@ -7,6 +7,7 @@ import {
 	cleanContentFromToolCalls,
 } from '@/tool-calling/index';
 import {ConversationStateManager} from '@/app/utils/conversationState';
+import {promptHistory} from '@/prompt-history';
 import UserMessage from '@/components/user-message';
 import AssistantMessage from '@/components/assistant-message';
 import ErrorMessage from '@/components/error-message';
@@ -14,7 +15,7 @@ import ToolMessage from '@/components/tool-message';
 import React from 'react';
 
 // Helper function to filter out invalid tool calls and deduplicate by ID and function
-const filterValidToolCalls = (toolCalls: any[]): any[] => {
+const filterValidToolCalls = (toolCalls: ToolCall[]): ToolCall[] => {
 	const seenIds = new Set<string>();
 	const seenFunctionCalls = new Set<string>();
 
@@ -65,7 +66,7 @@ interface UseChatHandlerProps {
 	setAbortController: (controller: AbortController | null) => void;
 	developmentMode?: 'normal' | 'auto-accept' | 'plan';
 	onStartToolConfirmationFlow: (
-		toolCalls: any[],
+		toolCalls: ToolCall[],
 		updatedMessages: Message[],
 		assistantMsg: Message,
 		systemMessage: Message,
@@ -97,17 +98,17 @@ export function useChatHandler({
 		}
 	}, [messages.length]);
 	// Display tool result with proper formatting (similar to useToolHandler)
-	const displayToolResult = async (toolCall: any, result: any) => {
+	const displayToolResult = async (toolCall: ToolCall, result: ToolResult) => {
 		if (toolManager) {
 			const formatter = toolManager.getToolFormatter(result.name);
 			if (formatter) {
 				try {
 					// Parse arguments if they're a JSON string
-					let parsedArgs = toolCall.function.arguments;
+					let parsedArgs: unknown = toolCall.function.arguments;
 					if (typeof parsedArgs === 'string') {
 						try {
-							parsedArgs = JSON.parse(parsedArgs);
-						} catch (e) {
+							parsedArgs = JSON.parse(parsedArgs) as Record<string, unknown>;
+						} catch {
 							// If parsing fails, use as-is
 						}
 					}
@@ -133,7 +134,7 @@ export function useChatHandler({
 							/>,
 						);
 					}
-				} catch (formatterError) {
+				} catch {
 					// If formatter fails, show raw result
 					addToChatQueue(
 						<ToolMessage
@@ -301,11 +302,14 @@ export function useChatHandler({
 						if (validator) {
 							try {
 								// Parse arguments if they're a JSON string
-								let parsedArgs = toolCall.function.arguments;
+								let parsedArgs: unknown = toolCall.function.arguments;
 								if (typeof parsedArgs === 'string') {
 									try {
-										parsedArgs = JSON.parse(parsedArgs);
-									} catch (e) {
+										parsedArgs = JSON.parse(parsedArgs) as Record<
+											string,
+											unknown
+										>;
+									} catch {
 										// If parsing fails, use as-is
 									}
 								}
@@ -314,7 +318,7 @@ export function useChatHandler({
 								if (!validationResult.valid) {
 									validationFailed = true;
 								}
-							} catch (error) {
+							} catch {
 								// Validation threw an error - treat as validation failure
 								validationFailed = true;
 							}
@@ -349,11 +353,14 @@ export function useChatHandler({
 							);
 							if (validator) {
 								// Parse arguments if they're a JSON string
-								let parsedArgs = toolCall.function.arguments;
+								let parsedArgs: unknown = toolCall.function.arguments;
 								if (typeof parsedArgs === 'string') {
 									try {
-										parsedArgs = JSON.parse(parsedArgs);
-									} catch (e) {
+										parsedArgs = JSON.parse(parsedArgs) as Record<
+											string,
+											unknown
+										>;
+									} catch {
 										// If parsing fails, use as-is
 									}
 								}
@@ -493,9 +500,18 @@ export function useChatHandler({
 	const handleChatMessage = async (message: string) => {
 		if (!client || !toolManager) return;
 
-		// Add user message to chat
+		// For display purposes, try to get the placeholder version from history
+		// This preserves the nice placeholder display in chat history
+		const history = promptHistory.getHistory();
+		const lastEntry = history[history.length - 1];
+		const displayMessage = lastEntry?.displayValue || message;
+
+		// Add user message to chat using display version (with placeholders)
 		addToChatQueue(
-			<UserMessage key={`user-${componentKeyCounter}`} message={message} />,
+			<UserMessage
+				key={`user-${componentKeyCounter}`}
+				message={displayMessage}
+			/>,
 		);
 
 		// Add user message to conversation history

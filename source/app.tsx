@@ -18,14 +18,15 @@ import {setGlobalMessageQueue} from '@/utils/message-queue';
 import Spinner from 'ink-spinner';
 import SecurityDisclaimer from '@/components/security-disclaimer';
 import {RecommendationsDisplay} from '@/commands/recommendations';
+import {ConfigWizard} from '@/wizard/config-wizard';
 
 // Import extracted hooks and utilities
-import {useAppState} from '@/app/hooks/useAppState';
-import {useChatHandler} from '@/app/hooks/useChatHandler';
-import {useToolHandler} from '@/app/hooks/useToolHandler';
-import {useModeHandlers} from '@/app/hooks/useModeHandlers';
-import {useAppInitialization} from '@/app/hooks/useAppInitialization';
-import {useDirectoryTrust} from '@/app/hooks/useDirectoryTrust';
+import {useAppState} from '@/hooks/useAppState';
+import {useChatHandler} from '@/hooks/useChatHandler';
+import {useToolHandler} from '@/hooks/useToolHandler';
+import {useModeHandlers} from '@/hooks/useModeHandlers';
+import {useAppInitialization} from '@/hooks/useAppInitialization';
+import {useDirectoryTrust} from '@/hooks/useDirectoryTrust';
 import {
 	createClearMessagesHandler,
 	handleMessageSubmission,
@@ -55,7 +56,7 @@ export default function App() {
 	// Initialize global message queue on component mount
 	React.useEffect(() => {
 		setGlobalMessageQueue(appState.addToChatQueue);
-	}, []);
+	}, [appState.addToChatQueue]);
 
 	// Setup chat handler
 	const chatHandler = useChatHandler({
@@ -126,6 +127,7 @@ export default function App() {
 		setIsProviderSelectionMode: appState.setIsProviderSelectionMode,
 		setIsThemeSelectionMode: appState.setIsThemeSelectionMode,
 		setIsRecommendationsMode: appState.setIsRecommendationsMode,
+		setIsConfigWizardMode: appState.setIsConfigWizardMode,
 		addToChatQueue: appState.addToChatQueue,
 		componentKeyCounter: appState.componentKeyCounter,
 	});
@@ -145,6 +147,7 @@ export default function App() {
 		addToChatQueue: appState.addToChatQueue,
 		componentKeyCounter: appState.componentKeyCounter,
 		customCommandCache: appState.customCommandCache,
+		setIsConfigWizardMode: appState.setIsConfigWizardMode,
 	});
 
 	// Memoize handlers to prevent unnecessary re-renders
@@ -158,7 +161,7 @@ export default function App() {
 			appState.setIsCancelling(true);
 			appState.abortController.abort();
 		}
-	}, [appState.abortController, appState.setIsCancelling]);
+	}, [appState]);
 
 	const handleToggleDevelopmentMode = React.useCallback(() => {
 		appState.setDevelopmentMode(currentMode => {
@@ -171,7 +174,7 @@ export default function App() {
 			const nextIndex = (currentIndex + 1) % modes.length;
 			return modes[nextIndex];
 		});
-	}, [appState.setDevelopmentMode]);
+	}, [appState]);
 
 	const handleShowStatus = React.useCallback(() => {
 		appState.addToChatQueue(
@@ -183,14 +186,7 @@ export default function App() {
 				updateInfo={appState.updateInfo}
 			/>,
 		);
-	}, [
-		appState.addToChatQueue,
-		appState.componentKeyCounter,
-		appState.currentProvider,
-		appState.currentModel,
-		appState.currentTheme,
-		appState.updateInfo,
-	]);
+	}, [appState]);
 
 	const handleMessageSubmit = React.useCallback(
 		async (message: string) => {
@@ -203,6 +199,7 @@ export default function App() {
 				onEnterProviderSelectionMode: modeHandlers.enterProviderSelectionMode,
 				onEnterThemeSelectionMode: modeHandlers.enterThemeSelectionMode,
 				onEnterRecommendationsMode: modeHandlers.enterRecommendationsMode,
+				onEnterConfigWizardMode: modeHandlers.enterConfigWizardMode,
 				onShowStatus: handleShowStatus,
 				onHandleChatMessage: chatHandler.handleChatMessage,
 				onAddToChatQueue: appState.addToChatQueue,
@@ -225,6 +222,9 @@ export default function App() {
 			clearMessages,
 			modeHandlers.enterModelSelectionMode,
 			modeHandlers.enterProviderSelectionMode,
+			modeHandlers.enterThemeSelectionMode,
+			modeHandlers.enterRecommendationsMode,
+			modeHandlers.enterConfigWizardMode,
 			handleShowStatus,
 			chatHandler.handleChatMessage,
 			appState.addToChatQueue,
@@ -233,6 +233,11 @@ export default function App() {
 			appState.messages,
 			appState.setIsBashExecuting,
 			appState.setCurrentBashCommand,
+			appState.currentProvider,
+			appState.currentModel,
+			appState.currentTheme,
+			appState.updateInfo,
+			appState.getMessageTokens,
 		],
 	);
 
@@ -312,13 +317,17 @@ export default function App() {
 								<ModelSelector
 									client={appState.client}
 									currentModel={appState.currentModel}
-									onModelSelect={modeHandlers.handleModelSelect}
+									onModelSelect={model =>
+										void modeHandlers.handleModelSelect(model)
+									}
 									onCancel={modeHandlers.handleModelSelectionCancel}
 								/>
 							) : appState.isProviderSelectionMode ? (
 								<ProviderSelector
 									currentProvider={appState.currentProvider}
-									onProviderSelect={modeHandlers.handleProviderSelect}
+									onProviderSelect={provider =>
+										void modeHandlers.handleProviderSelect(provider)
+									}
 									onCancel={modeHandlers.handleProviderSelectionCancel}
 								/>
 							) : appState.isThemeSelectionMode ? (
@@ -329,6 +338,14 @@ export default function App() {
 							) : appState.isRecommendationsMode ? (
 								<RecommendationsDisplay
 									onCancel={modeHandlers.handleRecommendationsCancel}
+								/>
+							) : appState.isConfigWizardMode ? (
+								<ConfigWizard
+									projectDir={process.cwd()}
+									onComplete={configPath =>
+										void modeHandlers.handleConfigWizardComplete(configPath)
+									}
+									onCancel={modeHandlers.handleConfigWizardCancel}
 								/>
 							) : appState.isToolConfirmationMode &&
 							  appState.pendingToolCalls[appState.currentToolIndex] ? (
@@ -356,7 +373,7 @@ export default function App() {
 									customCommands={Array.from(
 										appState.customCommandCache.keys(),
 									)}
-									onSubmit={handleMessageSubmit}
+									onSubmit={msg => void handleMessageSubmit(msg)}
 									disabled={
 										appState.isThinking ||
 										appState.isToolExecuting ||

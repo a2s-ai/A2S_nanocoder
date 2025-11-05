@@ -36,6 +36,8 @@ out
 .next
 .nuxt
 public
+result
+result-*
 
 # TypeScript cache
 *.tsbuildinfo
@@ -109,3 +111,5 @@ refactor.md
 
 # Heap snapshots
 .heap-snapshots
+
+coverage

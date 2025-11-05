@@ -1,4 +1,4 @@
-import {fetch} from 'undici';
+import {convertToMarkdown} from '@nanocollective/get-md';
 import React from 'react';
 import {Text, Box} from 'ink';
 import type {ToolHandler, ToolDefinition} from '@/types/index';
@@ -17,23 +17,11 @@ const handler: ToolHandler = async (args: FetchArgs): Promise<string> => {
 		throw new Error(`Invalid URL: ${args.url}`);
 	}
 
-	// Use Jina AI Reader to convert URL to LLM-friendly markdown
-	const jinaUrl = `https://r.jina.ai/${args.url}`;
-
 	try {
-		const response = await fetch(jinaUrl, {
-			headers: {
-				Accept: 'text/plain',
-			},
-			signal: AbortSignal.timeout(15000), // 15 second timeout
-			method: 'GET',
-		});
+		// Use get-md to convert URL to LLM-friendly markdown
+		const result = await convertToMarkdown(args.url);
 
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-		}
-
-		const content = await response.text();
+		const content = result.markdown;
 
 		if (!content || content.length === 0) {
 			throw new Error('No content returned from URL');
@@ -47,18 +35,20 @@ const handler: ToolHandler = async (args: FetchArgs): Promise<string> => {
 		}
 
 		return content;
-	} catch (error: any) {
-		if (error.name === 'AbortError') {
-			throw new Error(`Request timeout: URL took too long to fetch (>15s)`);
-		}
-		throw new Error(`Failed to fetch URL: ${error.message}`);
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		throw new Error(`Failed to fetch URL: ${message}`);
 	}
 };
 
 // Create a component that will re-render when theme changes
 const FetchUrlFormatter = React.memo(
-	({args, result}: {args: any; result?: string}) => {
-		const {colors} = React.useContext(ThemeContext)!;
+	({args, result}: {args: FetchArgs; result?: string}) => {
+		const theme = React.useContext(ThemeContext);
+		if (!theme) {
+			throw new Error('ThemeContext not found');
+		}
+		const {colors} = theme;
 		const url = args.url || 'unknown';
 
 		// Calculate content stats from result
@@ -107,14 +97,14 @@ const FetchUrlFormatter = React.memo(
 	},
 );
 
-const formatter = async (
-	args: any,
+const formatter = (
+	args: FetchArgs,
 	result?: string,
 ): Promise<React.ReactElement> => {
-	return <FetchUrlFormatter args={args} result={result} />;
+	return Promise.resolve(<FetchUrlFormatter args={args} result={result} />);
 };
 
-const validator = async (
+const validator = (
 	args: FetchArgs,
 ): Promise<{valid: true} | {valid: false; error: string}> => {
 	// Validate URL format
@@ -123,10 +113,10 @@ const validator = async (
 
 		// Check for valid protocol
 		if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-			return {
+			return Promise.resolve({
 				valid: false,
 				error: `Invalid URL protocol "${parsedUrl.protocol}". Only http: and https: are supported.`,
-			};
+			});
 		}
 
 		// Check for localhost/internal IPs (security consideration)
@@ -139,18 +129,18 @@ const validator = async (
 			hostname.startsWith('10.') ||
 			hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)
 		) {
-			return {
+			return Promise.resolve({
 				valid: false,
 				error: `⚒ Cannot fetch from internal/private network address: ${hostname}`,
-			};
+			});
 		}
 
-		return {valid: true};
-	} catch (error: any) {
-		return {
+		return Promise.resolve({valid: true});
+	} catch {
+		return Promise.resolve({
 			valid: false,
 			error: `⚒ Invalid URL format: ${args.url}`,
-		};
+		});
 	}
 };
 
@@ -164,7 +154,7 @@ export const fetchUrlTool: ToolDefinition = {
 		function: {
 			name: 'fetch_url',
 			description:
-				'Fetch and convert any URL to clean, LLM-friendly markdown text. Useful for reading documentation, articles, or web content. Supports images (with captions) and PDFs.',
+				'Fetch and convert any URL to clean, LLM-friendly markdown text using @nanocollective/get-md. Automatically extracts main content, removes ads/navigation, and converts to well-structured markdown. Useful for reading documentation, articles, or web content.',
 			parameters: {
 				type: 'object',
 				properties: {

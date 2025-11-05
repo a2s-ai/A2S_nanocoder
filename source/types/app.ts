@@ -1,9 +1,12 @@
 import React from 'react';
 import {CustomCommandLoader} from '@/custom-commands/loader';
 import {CustomCommandExecutor} from '@/custom-commands/executor';
+import type {Message} from './core';
+import type {UpdateInfo} from './utils';
+import type {CustomCommand} from './commands';
 
 export interface MessageSubmissionOptions {
-	customCommandCache: Map<string, any>;
+	customCommandCache: Map<string, CustomCommand>;
 	customCommandLoader: CustomCommandLoader | null;
 	customCommandExecutor: CustomCommandExecutor | null;
 	onClearMessages: () => Promise<void>;
@@ -11,43 +14,18 @@ export interface MessageSubmissionOptions {
 	onEnterProviderSelectionMode: () => void;
 	onEnterThemeSelectionMode: () => void;
 	onEnterRecommendationsMode: () => void;
+	onEnterConfigWizardMode: () => void;
 	onShowStatus: () => void;
 	onHandleChatMessage: (message: string) => Promise<void>;
 	onAddToChatQueue: (component: React.ReactNode) => void;
 	componentKeyCounter: number;
-	setMessages: (messages: any[]) => void;
-	messages: any[];
+	setMessages: (messages: Message[]) => void;
+	messages: Message[];
 	setIsBashExecuting: (executing: boolean) => void;
 	setCurrentBashCommand: (command: string) => void;
 	provider: string;
 	model: string;
 	theme: string;
-	updateInfo: any;
-	getMessageTokens: (message: any) => number;
-}
-
-export interface ThinkingStats {
-	totalTokens: number;
-	totalCost: number;
-	elapsedTime: number;
-	isThinking: boolean;
-}
-
-export interface ConversationContext {
-	currentTokenCount: number;
-	maxTokens: number;
-	tokenPercentage: number;
-}
-
-export interface UseAppInitializationProps {
-	isInitialized: boolean;
-	client: any | null;
-	currentProvider: string;
-	currentModel: string;
-	availableModels: any[];
-	preferences: any;
-	hasUpdate: boolean;
-	updateInfo: any;
-	isLoading: boolean;
-	initError: string | null;
+	updateInfo: UpdateInfo | null;
+	getMessageTokens: (message: Message) => number;
 }

@@ -2,7 +2,7 @@ import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput, useFocus} from 'ink';
 import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
 import {Tabs, Tab} from 'ink-tab';
-import {Command, SystemCapabilities} from '@/types/index';
+import {Command, SystemCapabilities, Colors} from '@/types/index';
 import {useTerminalWidth} from '@/hooks/useTerminalWidth';
 import {useTheme} from '@/hooks/useTheme';
 import {systemDetector} from '@/system/detector';
@@ -109,6 +109,7 @@ function RecommendationsDisplay({onCancel}: RecommendationsDisplayProps) {
 
 	// Reset index when switching tabs
 	useEffect(() => {
+		// eslint-disable-next-line
 		setCurrentModelIndex(0);
 	}, [activeTab]);
 
@@ -288,7 +289,7 @@ function SystemSummary({
 	colors,
 }: {
 	systemCaps: SystemCapabilities;
-	colors: any;
+	colors: Colors;
 }) {
 	const gpuText = systemCaps.gpu.available
 		? `${systemCaps.gpu.type} GPU${
@@ -331,7 +332,7 @@ function QuickStartSection({
 }: {
 	topLocalModel: ModelRecommendationEnhanced | null;
 	topApiModel: ModelRecommendationEnhanced | null;
-	colors: any;
+	colors: Colors;
 }) {
 	return (
 		<Box
@@ -384,7 +385,7 @@ function ModelsTabView({
 	currentTabModels,
 }: {
 	models: ModelRecommendationEnhanced[];
-	colors: any;
+	colors: Colors;
 	currentModelIndex: number;
 	activeTab: 'local' | 'api';
 	onTabChange: (tab: 'local' | 'api') => void;
@@ -528,7 +529,7 @@ function ModelItem({
 	searchMode,
 }: {
 	model: ModelRecommendationEnhanced;
-	colors: any;
+	colors: Colors;
 	showScore?: boolean;
 	localScore?: number;
 	apiScore?: number;
@@ -583,7 +584,7 @@ function ModelItem({
 	const getWeaknesses = (): string[] => {
 		const weaknesses: string[] = [];
 		const activeScoreInfo = isLocalTab ? localScoreInfo : apiScoreInfo;
-		const activeScore = isLocalTab ? localScore : apiScore;
+		const _activeScore = isLocalTab ? localScore : apiScore;
 
 		// Only show weaknesses if score is Poor or Decent
 		if (!activeScoreInfo || activeScoreInfo.score >= 6.5) return weaknesses;
@@ -667,22 +668,25 @@ function ModelItem({
 							)}
 						</>
 					) : showScore && (localScoreInfo || apiScoreInfo) ? (
-						<Text color={colors.white}>
-							<Text bold>
-								Quality For You{' '}
-								{isLocalTab || (model.model.local && !model.model.api)
-									? 'Locally'
-									: 'via API'}
-								:{' '}
-							</Text>
-							<Text color={(localScoreInfo || apiScoreInfo)!.color} bold>
-								{(localScoreInfo || apiScoreInfo)!.label}
-							</Text>
-							<Text dimColor>
-								{' '}
-								({(localScoreInfo || apiScoreInfo)!.score.toFixed(1)}/10)
-							</Text>
-						</Text>
+						(() => {
+							const scoreInfo = localScoreInfo || apiScoreInfo;
+							if (!scoreInfo) return null;
+							return (
+								<Text color={colors.white}>
+									<Text bold>
+										Quality For You{' '}
+										{isLocalTab || (model.model.local && !model.model.api)
+											? 'Locally'
+											: 'via API'}
+										:{' '}
+									</Text>
+									<Text color={scoreInfo.color} bold>
+										{scoreInfo.label}
+									</Text>
+									<Text dimColor> ({scoreInfo.score.toFixed(1)}/10)</Text>
+								</Text>
+							);
+						})()
 					) : null}
 				</Box>
 				<Box flexDirection="column">
@@ -718,9 +722,9 @@ export {RecommendationsDisplay};
 export const recommendationsCommand: Command = {
 	name: 'recommendations',
 	description: 'Get AI model recommendations based on your system',
-	handler: async (_args: string[], _messages, _metadata) => {
+	handler: (_args: string[], _messages, _metadata) => {
 		// This command is handled specially in app.tsx
 		// This handler exists only for registration purposes
-		return React.createElement(React.Fragment);
+		return Promise.resolve(React.createElement(React.Fragment));
 	},
 };

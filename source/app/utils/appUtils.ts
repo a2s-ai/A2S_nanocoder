@@ -5,7 +5,8 @@ import {toolRegistry} from '@/tools/index';
 import InfoMessage from '@/components/info-message';
 import ToolMessage from '@/components/tool-message';
 import ErrorMessage from '@/components/error-message';
-import type {MessageSubmissionOptions} from '@/types/index';
+import type {MessageSubmissionOptions, Message} from '@/types/index';
+import type {LLMClient} from '@/types/core';
 
 export async function handleMessageSubmission(
 	message: string,
@@ -20,6 +21,7 @@ export async function handleMessageSubmission(
 		onEnterProviderSelectionMode,
 		onEnterThemeSelectionMode,
 		onEnterRecommendationsMode,
+		onEnterConfigWizardMode,
 		onShowStatus,
 		onHandleChatMessage,
 		onAddToChatQueue,
@@ -50,8 +52,11 @@ export async function handleMessageSubmission(
 			// Parse the result
 			let result: {fullOutput: string; llmContext: string};
 			try {
-				result = JSON.parse(resultString);
-			} catch (e) {
+				result = JSON.parse(resultString) as {
+					fullOutput: string;
+					llmContext: string;
+				};
+			} catch {
 				// If parsing fails, treat as plain string
 				result = {
 					fullOutput: resultString,
@@ -78,7 +83,7 @@ ${result.fullOutput || '(No output)'}`;
 
 			// Add the truncated output to the LLM context for future interactions
 			if (result.llmContext) {
-				const userMessage = {
+				const userMessage: Message = {
 					role: 'user',
 					content: `Bash command output:\n\`\`\`\n$ ${bashCommand}\n${result.llmContext}\n\`\`\``,
 				};
@@ -89,12 +94,14 @@ ${result.fullOutput || '(No output)'}`;
 			setIsBashExecuting(false);
 			setCurrentBashCommand('');
 			return;
-		} catch (error: any) {
+		} catch (error: unknown) {
 			// Show error message if command fails
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			onAddToChatQueue(
 				React.createElement(ErrorMessage, {
 					key: `bash-error-${componentKeyCounter}`,
-					message: `Error executing command: ${error.message}`,
+					message: `Error executing command: ${errorMessage}`,
 				}),
 			);
 
@@ -123,7 +130,7 @@ ${result.fullOutput || '(No output)'}`;
 				.trim()
 				.split(/\s+/)
 				.filter(arg => arg);
-			const processedPrompt = await customCommandExecutor?.execute(
+			const processedPrompt = customCommandExecutor?.execute(
 				customCommand,
 				args,
 			);
@@ -148,6 +155,9 @@ ${result.fullOutput || '(No output)'}`;
 				return;
 			} else if (commandName === 'recommendations') {
 				onEnterRecommendationsMode();
+				return;
+			} else if (commandName === 'setup-config') {
+				onEnterConfigWizardMode();
 				return;
 			} else if (commandName === 'status') {
 				onShowStatus();
@@ -189,8 +199,8 @@ ${result.fullOutput || '(No output)'}`;
 }
 
 export function createClearMessagesHandler(
-	setMessages: (messages: any[]) => void,
-	client: any,
+	setMessages: (messages: Message[]) => void,
+	client: LLMClient | null,
 ) {
 	return async () => {
 		// Clear message history and client context

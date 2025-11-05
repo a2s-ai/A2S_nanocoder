@@ -2,7 +2,6 @@ import {readFileSync} from 'fs';
 import {join, dirname} from 'path';
 import {fileURLToPath} from 'url';
 import {loadPreferences, savePreferences} from '@/config/preferences';
-import {shouldLog} from '@/config/logging';
 import {logError} from '@/utils/message-queue';
 import type {NpmRegistryResponse, UpdateInfo} from '@/types/index';
 
@@ -41,15 +40,21 @@ function isNewerVersion(current: string, latest: string): boolean {
 /**
  * Get the current package version from package.json
  */
+interface PackageJson {
+	version: string;
+	[key: string]: unknown;
+}
+
 function getCurrentVersion(): string {
 	try {
 		const packageJsonPath = join(__dirname, '../../package.json');
-		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+		const packageJson = JSON.parse(
+			readFileSync(packageJsonPath, 'utf-8'),
+		) as PackageJson;
 		return packageJson.version;
 	} catch (error) {
-		if (shouldLog('warn')) {
-			logError(`Failed to read current version: ${error}`);
-		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		logError(`Failed to read current version: ${errorMessage}`);
 		return '0.0.0';
 	}
 }
@@ -79,9 +84,8 @@ async function fetchLatestVersion(): Promise<string | null> {
 		const data = (await response.json()) as NpmRegistryResponse;
 		return data.version;
 	} catch (error) {
-		if (shouldLog('warn')) {
-			logError(`Failed to fetch latest version: ${error}`);
-		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		logError(`Failed to fetch latest version: ${errorMessage}`);
 		return null;
 	}
 }
@@ -123,9 +127,8 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
 				: undefined,
 		};
 	} catch (error) {
-		if (shouldLog('warn')) {
-			logError(`Update check failed: ${error}`);
-		}
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		logError(`Update check failed: ${errorMessage}`);
 
 		// Still update the timestamp to prevent hammering the API on repeated failures
 		updateLastCheckTime();

@@ -8,12 +8,13 @@ import {logError} from '@/utils/message-queue';
 import {loadPreferences} from '@/config/preferences';
 import {getThemeColors, defaultTheme} from '@/config/themes';
 import {substituteEnvVars} from '@/config/env-substitution';
+import {getAppDataPath} from '@/config/paths';
 
 // Load .env file from working directory (shell environment takes precedence)
 // Suppress dotenv console output by temporarily redirecting stdout
 const envPath = join(process.cwd(), '.env');
 if (existsSync(envPath)) {
-	const originalWrite = process.stdout.write;
+	const originalWrite = process.stdout.write.bind(process.stdout);
 	process.stdout.write = () => true;
 	try {
 		loadEnv({path: envPath});
@@ -24,27 +25,6 @@ if (existsSync(envPath)) {
 
 // Hold a map of what config files are where
 export const confDirMap: Record<string, string> = {};
-
-// Determine the correct path for local app configuration
-function getAppDataPath(): string {
-	// 'win32' will set this correctly via the environment.
-	// The config path can be set via the `APPDATA` environment variable.
-	let appDataPath =
-		process.env.APPDATA ||
-		// We try to use `process.env.$XDG_CONFIG_HOME`, but cant count on it.
-		process.env.XDG_CONFIG_HOME ||
-		// For darwin, we set the correct app path.
-		(process.platform === 'darwin'
-			? `${process.env.HOME}/Library/Preferences`
-			: // For all other unix-like systems, we use the $HOME/.config
-			  `${process.env.HOME}/.config`);
-
-	// There doesn't seem to be a place to pull an "app name"
-	const appName = 'nanocoder';
-	appDataPath += `/${appName}`;
-
-	return appDataPath;
-}
 
 // Find the closest config file for the requested configuration file
 export function getClosestConfigFile(fileName: string): string {
@@ -77,23 +57,20 @@ export function getClosestConfigFile(fileName: string): string {
 
 		return join(appDataPath, fileName);
 	} catch (error) {
-		logError(`Failed to load ${fileName}: ${error}`);
+		logError(`Failed to load ${fileName}: ${String(error)}`);
 	}
 
 	// The code should never hit this, but it makes the TS compiler happy.
 	return fileName;
 }
 
-export function createDefaultConfFile(
-	filePath: string,
-	fileName: string,
-): void {
+function createDefaultConfFile(filePath: string, fileName: string): void {
 	try {
 		// If we cant find any, lets assume this is the first user run, create the
 		// correct file and direct the user to configure them correctly,
 		if (!existsSync(join(filePath, fileName))) {
 			// Maybe add a better sample config?
-			let sampleConfig = {};
+			const sampleConfig = {};
 
 			mkdirSync(filePath, {recursive: true});
 			writeFileSync(
@@ -103,7 +80,7 @@ export function createDefaultConfFile(
 			);
 		}
 	} catch (error) {
-		logError(`Failed to write ${filePath}: ${error}`);
+		logError(`Failed to write ${filePath}: ${String(error)}`);
 	}
 }
 
@@ -113,31 +90,30 @@ function loadAppConfig(): AppConfig {
 
 	try {
 		const rawData = readFileSync(agentsJsonPath, 'utf-8');
-		const agentsData = JSON.parse(rawData);
+		const agentsData = JSON.parse(rawData) as {nanocoder?: AppConfig};
 
 		// Apply environment variable substitution
 		const processedData = substituteEnvVars(agentsData);
 
 		if (processedData.nanocoder) {
 			return {
-				providers: processedData.nanocoder.providers,
-				mcpServers: processedData.nanocoder.mcpServers,
+				providers: processedData.nanocoder.providers ?? [],
+				mcpServers: processedData.nanocoder.mcpServers ?? [],
 			};
 		}
-	} catch (error) {
-		logError(`Failed to parse : ${'agents.config.json'}`);
+	} catch {
+		//
 	}
 
 	return {};
 }
 
-export const appConfig = loadAppConfig();
+export let appConfig = loadAppConfig();
 
-// Legacy config for backwards compatibility (no longer specific to any provider)
-export const legacyConfig = {
-	maxTokens: 4096,
-	contextSize: 4000,
-};
+// Function to reload the app configuration (useful after config file changes)
+export function reloadAppConfig(): void {
+	appConfig = loadAppConfig();
+}
 
 export function getColors(): Colors {
 	const preferences = loadPreferences();

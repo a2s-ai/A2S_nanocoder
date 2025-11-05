@@ -1,7 +1,10 @@
 import React from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
+import {
+	TitledBox as _TitledBox,
+	titleStyles as _titleStyles,
+} from '@mishieck/ink-titled-box';
 import {useTheme} from '@/hooks/useTheme';
 import type {ToolCall} from '@/types/core';
 import {toolFormatters} from '@/tools/index';
@@ -32,7 +35,7 @@ export default function ToolConfirmation({
 	const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
 	const [hasFormatterError, setHasFormatterError] = React.useState(false);
 	const [hasValidationError, setHasValidationError] = React.useState(false);
-	const [validationError, setValidationError] = React.useState<string | null>(
+	const [_validationError, setValidationError] = React.useState<string | null>(
 		null,
 	);
 
@@ -51,11 +54,11 @@ export default function ToolConfirmation({
 				if (validator) {
 					try {
 						// Parse arguments if they're a JSON string
-						let parsedArgs = toolCall.function.arguments;
+						let parsedArgs: unknown = toolCall.function.arguments;
 						if (typeof parsedArgs === 'string') {
 							try {
-								parsedArgs = JSON.parse(parsedArgs);
-							} catch (e) {
+								parsedArgs = JSON.parse(parsedArgs) as Record<string, unknown>;
+							} catch {
 								// If parsing fails, use as-is
 							}
 						}
@@ -87,11 +90,11 @@ export default function ToolConfirmation({
 				setIsLoadingPreview(true);
 				try {
 					// Parse arguments if they're a JSON string
-					let parsedArgs = toolCall.function.arguments;
+					let parsedArgs: unknown = toolCall.function.arguments;
 					if (typeof parsedArgs === 'string') {
 						try {
-							parsedArgs = JSON.parse(parsedArgs);
-						} catch (e) {
+							parsedArgs = JSON.parse(parsedArgs) as Record<string, unknown>;
+						} catch {
 							// If parsing fails, use as-is
 						}
 					}
@@ -109,8 +112,8 @@ export default function ToolConfirmation({
 			}
 		};
 
-		loadPreview();
-	}, [toolCall, toolManager]);
+		void loadPreview();
+	}, [toolCall, toolManager, colors.error]);
 
 	// Handle escape key to cancel
 	useInput((inputChar, key) => {

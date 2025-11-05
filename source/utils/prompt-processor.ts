@@ -1,8 +1,10 @@
 import {readFileSync, existsSync} from 'fs';
 import {join} from 'path';
 import {platform, homedir, release} from 'os';
-import {promptPath} from '@/config/index';
-import type {Tool} from '@/types/index';
+import {promptPath} from '../config/index';
+import type {Tool} from '../types/index';
+import type {InputState} from '../types/hooks';
+import {PlaceholderType} from '../types/hooks';
 
 /**
  * Get the default shell for the current platform
@@ -81,7 +83,11 @@ export function processPromptTemplate(tools: Tool[]): string {
 		try {
 			systemPrompt = readFileSync(promptPath, 'utf-8');
 		} catch (error) {
-			console.warn(`Failed to load system prompt from ${promptPath}: ${error}`);
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			console.warn(
+				`Failed to load system prompt from ${promptPath}: ${errorMessage}`,
+			);
 		}
 	}
 
@@ -98,7 +104,11 @@ export function processPromptTemplate(tools: Tool[]): string {
 			const agentsContent = readFileSync(agentsPath, 'utf-8');
 			systemPrompt += `\n\nAdditional Context...\n\n${agentsContent}`;
 		} catch (error) {
-			console.warn(`Failed to load AGENTS.md from ${agentsPath}: ${error}`);
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			console.warn(
+				`Failed to load AGENTS.md from ${agentsPath}: ${errorMessage}`,
+			);
 		}
 	}
 
@@ -176,6 +186,12 @@ function generateToolDocumentation(tools: Tool[]): string {
 /**
  * Format documentation for a single tool
  */
+interface ParameterSchema {
+	description?: string;
+	type?: string;
+	[key: string]: unknown;
+}
+
 function formatToolDocumentation(tool: Tool): string {
 	const {name, description, parameters} = tool.function;
 
@@ -184,17 +200,71 @@ function formatToolDocumentation(tool: Tool): string {
 	if (parameters.properties && Object.keys(parameters.properties).length > 0) {
 		doc += 'Parameters:\n';
 		Object.entries(parameters.properties).forEach(
-			([paramName, schema]: [string, any]) => {
+			([paramName, schema]: [string, ParameterSchema]) => {
 				const required = parameters.required?.includes(paramName)
 					? ' (required)'
 					: ' (optional)';
-				const description =
+				const paramDescription =
 					schema.description || schema.type || 'No description';
-				doc += `- ${paramName}${required}: ${description}\n`;
+				doc += `- ${paramName}${required}: ${paramDescription}\n`;
 			},
 		);
 		doc += '\n';
 	}
 
 	return doc;
+}
+
+/**
+ * Assemble the final prompt by replacing all placeholders with their full content
+ * This function is called before sending the prompt to the AI
+ */
+export function assemblePrompt(inputState: InputState): string {
+	let assembledPrompt = inputState.displayValue;
+
+	// Replace each placeholder with its full content
+	Object.entries(inputState.placeholderContent).forEach(
+		([placeholderId, placeholderContent]) => {
+			// Each placeholder type can have its own replacement logic
+			let replacementContent = placeholderContent.content || '';
+
+			// Type-specific content assembly (extensible for future types)
+			switch (placeholderContent.type) {
+				case PlaceholderType.PASTE: {
+					// For paste, use content directly
+					replacementContent = placeholderContent.content;
+					break;
+				}
+				case PlaceholderType.FILE: {
+					// For file, could add file headers or other formatting
+					replacementContent = placeholderContent.content;
+					break;
+				}
+				default: {
+					// TypeScript will ensure this is unreachable with proper enum usage
+					// Exhaustiveness check to ensure all enum cases are handled
+					placeholderContent satisfies never;
+					// Fallback for safety, though this should never be reached
+					replacementContent = '';
+					break;
+				}
+			}
+
+			// Use the displayText to find and replace the placeholder
+			const displayText = placeholderContent.displayText;
+			if (displayText) {
+				assembledPrompt = assembledPrompt.replace(
+					displayText,
+					replacementContent,
+				);
+			} else {
+				// Fallback for legacy paste format
+				const placeholderPattern = `\\[Paste #${placeholderId}: \\d+ chars\\]`;
+				const regex = new RegExp(placeholderPattern, 'g');
+				assembledPrompt = assembledPrompt.replace(regex, replacementContent);
+			}
+		},
+	);
+
+	return assembledPrompt;
 }

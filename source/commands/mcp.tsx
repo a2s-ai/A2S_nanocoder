@@ -11,7 +11,7 @@ interface MCPProps {
 	toolManager: ToolManager | null;
 }
 
-export function MCP({toolManager}: MCPProps) {
+function MCP({toolManager}: MCPProps) {
 	const boxWidth = useTerminalWidth();
 	const {colors} = useTheme();
 	const connectedServers = toolManager?.getConnectedServers() || [];
@@ -81,7 +81,10 @@ export function MCP({toolManager}: MCPProps) {
 									</Text>
 									{serverTools.length > 0 && (
 										<Text color={colors.secondary}>
-											Tools: {serverTools.map((t: any) => t.name).join(', ')}
+											Tools:{' '}
+											{serverTools
+												.map((t: {name: string}) => t.name)
+												.join(', ')}
 										</Text>
 									)}
 								</Box>
@@ -97,12 +100,14 @@ export function MCP({toolManager}: MCPProps) {
 export const mcpCommand: Command = {
 	name: 'mcp',
 	description: 'Show connected MCP servers and their tools',
-	handler: async (_args: string[], _messages, _metadata) => {
+	handler: (_args: string[], _messages, _metadata) => {
 		const toolManager = getToolManager();
 
-		return React.createElement(MCP, {
-			key: `mcp-${Date.now()}`,
-			toolManager: toolManager,
-		});
+		return Promise.resolve(
+			React.createElement(MCP, {
+				key: `mcp-${Date.now()}`,
+				toolManager: toolManager,
+			}),
+		);
 	},
 };

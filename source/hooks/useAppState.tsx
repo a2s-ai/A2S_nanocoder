@@ -1,20 +1,14 @@
 import {useState, useCallback} from 'react';
-import {LLMClient, Message, DevelopmentMode} from '@/types/core';
+import {LLMClient, Message, DevelopmentMode, ToolCall} from '@/types/core';
 import {ToolManager} from '@/tools/tool-manager';
 import {CustomCommandLoader} from '@/custom-commands/loader';
 import {CustomCommandExecutor} from '@/custom-commands/executor';
 import {loadPreferences} from '@/config/preferences';
 import {defaultTheme} from '@/config/themes';
 import type {ThemePreset} from '@/types/ui';
-import type {UpdateInfo} from '@/types/index';
+import type {UpdateInfo, ToolResult} from '@/types/index';
+import type {CustomCommand} from '@/types/commands';
 import React from 'react';
-
-export interface ThinkingStats {
-	tokenCount: number;
-	contextSize: number;
-	totalTokensUsed: number;
-	tokensPerSecond?: number;
-}
 
 export interface ConversationContext {
 	updatedMessages: Message[];
@@ -43,7 +37,7 @@ export function useAppState() {
 	const [customCommandExecutor, setCustomCommandExecutor] =
 		useState<CustomCommandExecutor | null>(null);
 	const [customCommandCache, setCustomCommandCache] = useState<
-		Map<string, any>
+		Map<string, CustomCommand>
 	>(new Map());
 	const [startChat, setStartChat] = useState<boolean>(false);
 	const [mcpInitialized, setMcpInitialized] = useState<boolean>(false);
@@ -66,6 +60,7 @@ export function useAppState() {
 		useState<boolean>(false);
 	const [isRecommendationsMode, setIsRecommendationsMode] =
 		useState<boolean>(false);
+	const [isConfigWizardMode, setIsConfigWizardMode] = useState<boolean>(false);
 	const [isToolConfirmationMode, setIsToolConfirmationMode] =
 		useState<boolean>(false);
 	const [isToolExecuting, setIsToolExecuting] = useState<boolean>(false);
@@ -77,9 +72,11 @@ export function useAppState() {
 		useState<DevelopmentMode>('normal');
 
 	// Tool confirmation state
-	const [pendingToolCalls, setPendingToolCalls] = useState<any[]>([]);
+	const [pendingToolCalls, setPendingToolCalls] = useState<ToolCall[]>([]);
 	const [currentToolIndex, setCurrentToolIndex] = useState<number>(0);
-	const [completedToolResults, setCompletedToolResults] = useState<any[]>([]);
+	const [completedToolResults, setCompletedToolResults] = useState<
+		ToolResult[]
+	>([]);
 	const [currentConversationContext, setCurrentConversationContext] =
 		useState<ConversationContext | null>(null);
 
@@ -116,8 +113,9 @@ export function useAppState() {
 		(message: Message) => {
 			const cacheKey = (message.content || '') + message.role;
 
-			if (messageTokenCache.has(cacheKey)) {
-				return messageTokenCache.get(cacheKey)!;
+			const cachedTokens = messageTokenCache.get(cacheKey);
+			if (cachedTokens !== undefined) {
+				return cachedTokens;
 			}
 
 			const tokens = Math.ceil((message.content?.length || 0) / 4);
@@ -173,6 +171,7 @@ export function useAppState() {
 		isProviderSelectionMode,
 		isThemeSelectionMode,
 		isRecommendationsMode,
+		isConfigWizardMode,
 		isToolConfirmationMode,
 		isToolExecuting,
 		isBashExecuting,
@@ -207,6 +206,7 @@ export function useAppState() {
 		setIsProviderSelectionMode,
 		setIsThemeSelectionMode,
 		setIsRecommendationsMode,
+		setIsConfigWizardMode,
 		setIsToolConfirmationMode,
 		setIsToolExecuting,
 		setIsBashExecuting,

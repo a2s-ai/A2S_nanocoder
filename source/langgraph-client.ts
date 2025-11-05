@@ -12,6 +12,7 @@ import type {
 	Tool,
 	LLMClient,
 	LangChainProviderConfig,
+	LLMChatResponse,
 } from '@/types/index';
 import {XMLToolCallParser} from '@/tool-calling/xml-parser';
 
@@ -112,8 +113,10 @@ function convertToLangChainMessage(message: Message): BaseMessage {
 				tool_call_id: message.tool_call_id || '',
 				name: message.name || '',
 			});
-		default:
-			throw new Error(`Unsupported message role: ${message.role}`);
+		default: {
+			const unknownMessage = message as {role: string};
+			throw new Error(`Unsupported message role: ${unknownMessage.role}`);
+		}
 	}
 }
 
@@ -139,12 +142,31 @@ function convertFromLangChainMessage(message: AIMessage): Message {
 	return result;
 }
 
+interface ModelInfo {
+	context_length?: number;
+	[key: string]: unknown;
+}
+
+interface ChatConfig {
+	modelName: string;
+	openAIApiKey: string;
+	configuration: {
+		baseURL: string;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		fetch: any;
+		defaultHeaders?: Record<string, string>;
+	};
+	timeout?: number;
+	maxTokens?: number;
+	[key: string]: unknown;
+}
+
 export class LangGraphClient implements LLMClient {
 	private chatModel: ChatOpenAI;
 	private currentModel: string;
 	private availableModels: string[];
 	private providerConfig: LangChainProviderConfig;
-	private modelInfoCache: Map<string, any> = new Map();
+	private modelInfoCache: Map<string, ModelInfo> = new Map();
 	private undiciAgent: Agent;
 
 	constructor(providerConfig: LangChainProviderConfig) {
@@ -173,31 +195,43 @@ export class LangGraphClient implements LLMClient {
 		this.chatModel = this.createChatModel();
 	}
 
-	static async create(
+	static create(
 		providerConfig: LangChainProviderConfig,
 	): Promise<LangGraphClient> {
 		const client = new LangGraphClient(providerConfig);
-		return client;
+		return Promise.resolve(client);
 	}
 
 	private createChatModel(): ChatOpenAI {
 		const {config, requestTimeout} = this.providerConfig;
 
-		const customFetch = (url: RequestInfo, options: RequestInit = {}) => {
+		const customFetch = (
+			url: string | URL | Request,
+			options: RequestInit = {},
+		) => {
 			// Ensure the abort signal is preserved from options
-			return fetch(url, {
+			return fetch(url as RequestInfo, {
 				...options,
 				signal: options.signal, // Explicitly preserve the signal
 				dispatcher: this.undiciAgent,
 			});
 		};
 
-		const chatConfig: any = {
+		// Add OpenRouter-specific headers for app attribution
+		const defaultHeaders: Record<string, string> = {};
+		if (this.providerConfig.name.toLowerCase() === 'openrouter') {
+			defaultHeaders['HTTP-Referer'] =
+				'https://github.com/Nano-Collective/nanocoder';
+			defaultHeaders['X-Title'] = 'Nanocoder';
+		}
+
+		const chatConfig: ChatConfig = {
 			modelName: this.currentModel,
-			openAIApiKey: config.apiKey || 'dummy-key',
+			openAIApiKey: config.apiKey ?? 'dummy-key',
 			configuration: {
-				baseURL: config.baseURL,
+				baseURL: config.baseURL ?? '',
 				fetch: customFetch,
+				defaultHeaders,
 			},
 			...config,
 		};
@@ -225,9 +259,9 @@ export class LangGraphClient implements LLMClient {
 
 	getContextSize(): number {
 		// For OpenRouter, get from cached model info
-		if (this.providerConfig.name === 'openrouter') {
+		if (this.providerConfig.name.toLowerCase() === 'openrouter') {
 			const modelData = this.modelInfoCache.get(this.currentModel);
-			if (modelData && modelData.context_length) {
+			if (modelData?.context_length) {
 				return modelData.context_length;
 			}
 			return 0;
@@ -239,22 +273,25 @@ export class LangGraphClient implements LLMClient {
 		}
 
 		// Try to get from LangChain model if available
-		if (this.chatModel && (this.chatModel as any).maxTokens) {
-			return (this.chatModel as any).maxTokens;
+		const chatModelWithMaxTokens = this.chatModel as ChatOpenAI & {
+			maxTokens?: number;
+		};
+		if (chatModelWithMaxTokens.maxTokens) {
+			return chatModelWithMaxTokens.maxTokens;
 		}
 
 		return 0;
 	}
 
-	async getAvailableModels(): Promise<string[]> {
-		return this.availableModels;
+	getAvailableModels(): Promise<string[]> {
+		return Promise.resolve(this.availableModels);
 	}
 
 	async chat(
 		messages: Message[],
 		tools: Tool[],
 		signal?: AbortSignal,
-	): Promise<any> {
+	): Promise<LLMChatResponse> {
 		// Check if already aborted before starting
 		if (signal?.aborted) {
 			throw new Error('Operation was cancelled');
@@ -281,12 +318,14 @@ export class LangGraphClient implements LLMClient {
 					}));
 
 					// Try binding tools to the model
-					const modelWithTools = this.chatModel.bindTools(langchainTools);
+					const modelWithTools = this.chatModel.bindTools(langchainTools, {
+						parallel_tool_calls: false,
+					});
 					result = (await modelWithTools.invoke(
 						langchainMessages,
 						invokeOptions,
 					)) as AIMessage;
-				} catch (bindError) {
+				} catch {
 					// Tool binding failed, fall back to base model
 					result = (await this.chatModel.invoke(
 						langchainMessages,
@@ -310,7 +349,7 @@ export class LangGraphClient implements LLMClient {
 					convertedMessage.tool_calls.length === 0) &&
 				convertedMessage.content
 			) {
-				const content = convertedMessage.content as string;
+				const content = convertedMessage.content;
 
 				if (XMLToolCallParser.hasToolCalls(content)) {
 					const parsedToolCalls = XMLToolCallParser.parseToolCalls(content);
@@ -330,7 +369,11 @@ export class LangGraphClient implements LLMClient {
 			return {
 				choices: [
 					{
-						message: convertedMessage,
+						message: {
+							role: 'assistant' as const,
+							content: convertedMessage.content,
+							tool_calls: convertedMessage.tool_calls,
+						},
 					},
 				],
 			};

@@ -1,17 +1,7 @@
-import {shouldLog} from '@/config/logging';
 import {logError} from '@/utils/message-queue';
 
-// Check if a string contains environment variable references
-export function isEnvVarReference(str: string): boolean {
-	if (typeof str !== 'string') {
-		return false;
-	}
-
-	return /\$\{[A-Z_][A-Z0-9_]*(?::-[^}]*)?\}|\$[A-Z_][A-Z0-9_]*/g.test(str);
-}
-
 // Expand environment variable references in a string
-export function expandEnvVar(str: string): string {
+function expandEnvVar(str: string): string {
 	if (typeof str !== 'string') {
 		return str;
 	}
@@ -20,8 +10,15 @@ export function expandEnvVar(str: string): string {
 
 	return str.replace(
 		regex,
-		(match, bracedVarName, defaultValue, unbracedVarName) => {
+		(
+			_match: string,
+			bracedVarName: string | undefined,
+			defaultValue: string | undefined,
+			unbracedVarName: string | undefined,
+		) => {
 			const varName = bracedVarName || unbracedVarName;
+			if (!varName) return '';
+
 			const envValue = process.env[varName];
 
 			if (envValue !== undefined) {
@@ -32,11 +29,9 @@ export function expandEnvVar(str: string): string {
 				return defaultValue;
 			}
 
-			if (shouldLog('warn')) {
-				logError(
-					`Environment variable ${varName} not found in config, using empty string`,
-				);
-			}
+			logError(
+				`Environment variable ${varName} not found in config, using empty string`,
+			);
 
 			return '';
 		},
@@ -44,26 +39,26 @@ export function expandEnvVar(str: string): string {
 }
 
 // Recursively substitute environment variables in objects, arrays, and strings
-export function substituteEnvVars(value: any): any {
+export function substituteEnvVars<T>(value: T): T {
 	if (value === null || value === undefined) {
 		return value;
 	}
 
 	if (typeof value === 'string') {
-		return expandEnvVar(value);
+		return expandEnvVar(value) as T;
 	}
 
 	if (Array.isArray(value)) {
-		return value.map(item => substituteEnvVars(item));
+		return value.map((item: unknown) => substituteEnvVars(item)) as T;
 	}
 
 	if (typeof value === 'object') {
-		const result: any = {};
+		const result: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(value)) {
 			result[key] = substituteEnvVars(val);
 		}
 
-		return result;
+		return result as T;
 	}
 
 	return value;
