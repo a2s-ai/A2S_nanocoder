@@ -11,7 +11,7 @@ interface ParsedToolCall {
  */
 export class XMLToolCallParser {
 	private static readonly TOOL_CALL_REGEX = /<(\w+)>(.*?)<\/\1>/gs;
-	private static readonly PARAMETER_REGEX = /<(\w+)>(.*?)<\/\1>/g;
+	private static readonly PARAMETER_REGEX = /<(\w+)>(.*?)<\/\1>/gs;
 
 	/**
 	 * Extracts tool calls from text content containing XML-formatted tool calls
@@ -33,10 +33,15 @@ export class XMLToolCallParser {
 		// Find all tool call blocks
 		this.TOOL_CALL_REGEX.lastIndex = 0; // Reset regex state
 		while ((match = this.TOOL_CALL_REGEX.exec(processedContent)) !== null) {
-			const [, toolName, innerXml] = match;
+			const [fullMatch, toolName, innerXml] = match;
 
 			// Skip if this is a generic "tool_call" tag that slipped through
 			if (toolName === 'tool_call') {
+				continue;
+			}
+
+			// Validate that this is a properly formed tool call
+			if (!this.isValidToolCall(fullMatch, toolName)) {
 				continue;
 			}
 
@@ -52,6 +57,83 @@ export class XMLToolCallParser {
 	}
 
 	/**
+	 * Validates that a matched string is a proper tool call
+	 * Rejects partial matches, malformed syntax, and invalid structures
+	 */
+	private static isValidToolCall(fullMatch: string, toolName: string): boolean {
+		// Reject common HTML tags that might be in model output
+		const htmlTags = [
+			'div',
+			'span',
+			'p',
+			'a',
+			'ul',
+			'ol',
+			'li',
+			'table',
+			'tr',
+			'td',
+			'th',
+			'thead',
+			'tbody',
+			'h1',
+			'h2',
+			'h3',
+			'h4',
+			'h5',
+			'h6',
+			'br',
+			'hr',
+			'strong',
+			'em',
+			'code',
+			'pre',
+			'blockquote',
+			'img',
+			'section',
+			'article',
+			'header',
+			'footer',
+			'nav',
+			'aside',
+		];
+		if (htmlTags.includes(toolName.toLowerCase())) {
+			return false;
+		}
+
+		// Check for malformed attribute-style syntax like <function=name> or <parameter=name>
+		if (fullMatch.includes('=')) {
+			return false;
+		}
+
+		// Check if the closing tag is properly formed
+		if (!fullMatch.endsWith(`</${toolName}>`)) {
+			return false;
+		}
+
+		// Extract inner content between opening and closing tags
+		const innerContent = fullMatch.substring(
+			toolName.length + 2,
+			fullMatch.length - (toolName.length + 3),
+		);
+
+		// Valid tool calls should contain parameter tags (other XML tags inside)
+		// This prevents matching on standalone parameter tags from malformed XML
+		const hasNestedTags = /<\w+>/.test(innerContent);
+
+		// Tool names should contain underscores (snake_case convention for tools)
+		// or be reasonably long compound words
+		const hasUnderscore = toolName.includes('_');
+
+		// Allow if it has nested tags OR follows naming convention
+		if (!hasNestedTags && !hasUnderscore) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Parses parameters from inner XML content
 	 */
 	private static parseParameters(innerXml: string): Record<string, unknown> {
@@ -64,12 +146,15 @@ export class XMLToolCallParser {
 		while ((match = this.PARAMETER_REGEX.exec(innerXml)) !== null) {
 			const [, paramName, paramValue] = match;
 
+			// Trim whitespace from parameter value
+			const trimmedValue = paramValue.trim();
+
 			// Try to parse as JSON for complex objects/arrays
 			try {
-				parameters[paramName] = JSON.parse(paramValue) as unknown;
+				parameters[paramName] = JSON.parse(trimmedValue) as unknown;
 			} catch {
-				// If not valid JSON, use as string
-				parameters[paramName] = paramValue;
+				// If not valid JSON, use as string (preserving internal whitespace/newlines)
+				parameters[paramName] = trimmedValue;
 			}
 		}
 
@@ -114,13 +199,22 @@ export class XMLToolCallParser {
 
 		// Remove XML tool calls that aren't in code blocks
 		this.TOOL_CALL_REGEX.lastIndex = 0;
-		cleanedContent = cleanedContent.replace(this.TOOL_CALL_REGEX, '').trim();
+		cleanedContent = cleanedContent.replace(this.TOOL_CALL_REGEX, '');
 
 		// Remove any <tool_call> wrapper tags that may be left behind
-		cleanedContent = cleanedContent.replace(/<\/?tool_call>/g, '').trim();
+		cleanedContent = cleanedContent.replace(/<\/?tool_call>/g, '');
 
-		// Clean up extra whitespace and empty lines
-		cleanedContent = cleanedContent.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+		// Clean up whitespace artifacts left by removed tool calls
+		cleanedContent = cleanedContent
+			// Remove trailing whitespace from each line
+			.replace(/[ \t]+$/gm, '')
+			// Collapse multiple spaces (but not at start of line for indentation)
+			.replace(/([^ \t\n]) {2,}/g, '$1 ')
+			// Remove lines that are only whitespace
+			.replace(/^[ \t]+$/gm, '')
+			// Collapse 2+ consecutive blank lines to a single blank line
+			.replace(/\n{3,}/g, '\n\n')
+			.trim();
 
 		return cleanedContent;
 	}
@@ -129,16 +223,67 @@ export class XMLToolCallParser {
 	 * Checks if content contains XML-formatted tool calls
 	 */
 	static hasToolCalls(content: string): boolean {
-		// Handle content that might be wrapped in markdown code blocks
-		let processedContent = content;
-		const codeBlockMatch = content.match(/```(?:\w+)?\s*\n?([\s\S]*?)\n?```/);
-		if (codeBlockMatch && codeBlockMatch[1]) {
-			processedContent = codeBlockMatch[1].trim();
+		// Use parseToolCalls with validation to ensure we only detect valid tool calls
+		const toolCalls = this.parseToolCalls(content);
+		return toolCalls.length > 0;
+	}
+
+	/**
+	 * Detects malformed XML tool call attempts and returns error details
+	 * Returns null if no malformed tool calls detected
+	 */
+	static detectMalformedToolCall(
+		content: string,
+	): {error: string; examples: string} | null {
+		// Common malformed patterns
+		const patterns = [
+			{
+				// [tool_use: name] or [Tool: name] syntax (common with some models like GLM)
+				regex: /\[(?:tool_use|Tool):\s*(\w+)\]/i,
+				error:
+					'Invalid syntax: [tool_use: name] or [Tool: name] format is not supported',
+			},
+			{
+				// <function=name> syntax
+				regex: /<function=(\w+)>/,
+				error: 'Invalid syntax: <function=name> is not supported',
+			},
+			{
+				// <parameter=name> syntax
+				regex: /<parameter=(\w+)>/,
+				error: 'Invalid syntax: <parameter=name> is not supported',
+			},
+			{
+				// Generic closing </parameter> without proper name
+				regex: /<parameter=\w+>[\s\S]*?<\/parameter>/,
+				error:
+					'Invalid parameter syntax: parameters must use named tags, not generic <parameter> wrapper',
+			},
+			{
+				// Generic closing </function> when <function=name> was used
+				regex: /<function=\w+>[\s\S]*?<\/function>/,
+				error:
+					'Invalid function syntax: use simple named tags, not <function=name> wrapper',
+			},
+		];
+
+		for (const pattern of patterns) {
+			const match = content.match(pattern.regex);
+			if (match) {
+				return {
+					error: pattern.error,
+					examples: this.getCorrectFormatExamples(),
+				};
+			}
 		}
 
-		this.TOOL_CALL_REGEX.lastIndex = 0;
-		const result = this.TOOL_CALL_REGEX.test(processedContent);
+		return null;
+	}
 
-		return result;
+	/**
+	 * Generates correct format examples for error messages
+	 */
+	private static getCorrectFormatExamples(): string {
+		return `Please use the native tool calling format provided by the system. The tools are already available to you - call them directly using the function calling interface.`;
 	}
 }

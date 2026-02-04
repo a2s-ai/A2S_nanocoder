@@ -1,8 +1,8 @@
 import {Box, Text} from 'ink';
 import SelectInput from 'ink-select-input';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
+import {defaultTheme, getThemeColors} from '@/config/themes';
 import {useTerminalWidth} from '@/hooks/useTerminalWidth';
-import {getThemeColors, defaultTheme} from '@/config/themes';
 
 interface SecurityDisclaimerProps {
 	onConfirm: () => void;
@@ -46,11 +46,8 @@ export default function SecurityDisclaimer({
 
 	return (
 		<Box flexDirection="column" padding={1}>
-			<TitledBox
-				key={colors.primary}
-				borderStyle="round"
-				titles={['Security Warning']}
-				titleStyles={titleStyles.pill}
+			<TitledBoxWithPreferences
+				title="Security Warning"
 				width={boxWidth}
 				borderColor={colors.error}
 				paddingX={2}
@@ -70,7 +67,7 @@ export default function SecurityDisclaimer({
 					</Text>
 				</Box>
 				<SelectInput items={items} onSelect={handleSelect} />
-			</TitledBox>
+			</TitledBoxWithPreferences>
 		</Box>
 	);
 }

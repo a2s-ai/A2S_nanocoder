@@ -1,19 +1,37 @@
-import {Command} from '@/types/index';
-import {commandRegistry} from '@/commands';
-import fs from 'fs';
-import path from 'path';
-import {fileURLToPath} from 'url';
-import React from 'react';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
+import {readFile} from 'node:fs/promises';
 import {Box, Text} from 'ink';
+import path from 'path';
+import React from 'react';
+import {fileURLToPath} from 'url';
+import {commandRegistry} from '@/commands';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
 import {useTerminalWidth} from '@/hooks/useTerminalWidth';
 import {useTheme} from '@/hooks/useTheme';
+import {Command} from '@/types/index';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const packageJson = JSON.parse(
-	fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'),
-) as {version: string};
+let cachedVersion: string | null = null;
+
+async function getPackageVersion(): Promise<string> {
+	if (cachedVersion) {
+		return cachedVersion;
+	}
+
+	try {
+		const content = await readFile(
+			path.join(__dirname, '../../package.json'),
+			'utf8',
+		);
+		const packageJson = JSON.parse(content) as {version?: string};
+		cachedVersion = packageJson.version ?? '0.0.0';
+		return cachedVersion;
+	} catch (error) {
+		console.warn('Failed to read package version:', error);
+		cachedVersion = '0.0.0';
+		return cachedVersion;
+	}
+}
 
 function Help({
 	version,
@@ -25,11 +43,8 @@ function Help({
 	const boxWidth = useTerminalWidth();
 	const {colors} = useTheme();
 	return (
-		<TitledBox
-			key={colors.primary}
-			borderStyle="round"
-			titles={['/help']}
-			titleStyles={titleStyles.pill}
+		<TitledBoxWithPreferences
+			title="Help"
 			width={boxWidth}
 			borderColor={colors.primary}
 			paddingX={2}
@@ -43,7 +58,7 @@ function Help({
 				</Text>
 			</Box>
 
-			<Text color={colors.white}>
+			<Text color={colors.text}>
 				A local-first CLI coding agent that brings the power of agentic coding
 				tools like Claude Code and Gemini CLI to local models or controlled APIs
 				like OpenRouter.
@@ -62,13 +77,13 @@ function Help({
 					Common Tasks:
 				</Text>
 			</Box>
-			<Text color={colors.white}>
+			<Text color={colors.text}>
 				{' '}
 				• Ask questions about your codebase {'>'} How does foo.py work?
 			</Text>
-			<Text color={colors.white}> • Edit files {'>'} Update bar.ts to...</Text>
-			<Text color={colors.white}> • Fix errors {'>'} cargo build</Text>
-			<Text color={colors.white}> • Run commands {'>'} /help</Text>
+			<Text color={colors.text}> • Edit files {'>'} Update bar.ts to...</Text>
+			<Text color={colors.text}> • Fix errors {'>'} cargo build</Text>
+			<Text color={colors.text}> • Run commands {'>'} /help</Text>
 
 			<Box marginTop={1}>
 				<Text color={colors.primary} bold>
@@ -76,31 +91,30 @@ function Help({
 				</Text>
 			</Box>
 			{commands.length === 0 ? (
-				<Text color={colors.white}> No commands available.</Text>
+				<Text color={colors.text}> No commands available.</Text>
 			) : (
 				commands.map((cmd, index) => (
-					<Text key={index} color={colors.white}>
+					<Text key={index} color={colors.text}>
 						{' '}
 						• /{cmd.name} - {cmd.description}
 					</Text>
 				))
 			)}
-		</TitledBox>
+		</TitledBoxWithPreferences>
 	);
 }
 
 export const helpCommand: Command = {
 	name: 'help',
 	description: 'Show available commands',
-	handler: (_args: string[], _messages, _metadata) => {
+	handler: async (_args: string[], _messages, _metadata) => {
 		const commands = commandRegistry.getAll();
+		const version = await getPackageVersion();
 
-		return Promise.resolve(
-			React.createElement(Help, {
-				key: `help-${Date.now()}`,
-				version: packageJson.version,
-				commands: commands,
-			}),
-		);
+		return React.createElement(Help, {
+			key: `help-${Date.now()}`,
+			version,
+			commands: commands,
+		});
 	},
 };

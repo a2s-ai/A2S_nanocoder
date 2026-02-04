@@ -1,6 +1,6 @@
 export interface Colors {
-	white: string;
-	black: string;
+	text: string;
+	base: string;
 	primary: string;
 	tool: string;
 	secondary: string;
@@ -13,12 +13,15 @@ export interface Colors {
 	diffRemoved: string;
 	diffAddedText: string;
 	diffRemovedText: string;
+	// Gradient colors (optional)
+	gradientColors?: string[];
 }
 
 export interface Theme {
 	name: string;
 	displayName: string;
 	colors: Colors;
+	themeType: 'light' | 'dark';
 }
 
 export type ThemePreset =
@@ -36,4 +39,23 @@ export type ThemePreset =
 	| 'electric-storm'
 	| 'deep-sea'
 	| 'volcanic-ash'
-	| 'cyberpunk-mint';
+	| 'cyberpunk-mint'
+	| 'dracula'
+	| 'catppuccin-latte'
+	| 'catppuccin-frappe'
+	| 'catppuccin-macchiato'
+	| 'catppuccin-mocha';
+
+export type NanocoderShape =
+	| 'block'
+	| 'slick'
+	| 'tiny'
+	| 'grid'
+	| 'pallet'
+	| 'shade'
+	| 'simple'
+	| 'simpleBlock'
+	| '3d'
+	| 'simple3d'
+	| 'chrome'
+	| 'huge';

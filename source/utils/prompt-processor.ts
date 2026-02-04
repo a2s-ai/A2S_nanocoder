@@ -1,10 +1,10 @@
-import {readFileSync, existsSync} from 'fs';
+import {existsSync, readFileSync} from 'fs';
+import {homedir, platform, release} from 'os';
 import {join} from 'path';
-import {platform, homedir, release} from 'os';
 import {promptPath} from '../config/index';
-import type {Tool} from '../types/index';
 import type {InputState} from '../types/hooks';
 import {PlaceholderType} from '../types/hooks';
+import {getLogger} from './logging';
 
 /**
  * Get the default shell for the current platform
@@ -14,7 +14,6 @@ function getDefaultShell(): string {
 	if (shellEnv) {
 		return shellEnv;
 	}
-
 	switch (platform()) {
 		case 'win32':
 			return process.env.COMSPEC || 'cmd.exe';
@@ -73,9 +72,9 @@ function injectSystemInfo(prompt: string): string {
 }
 
 /**
- * Process the main prompt template by injecting dynamic tool documentation and system info
+ * Process the main prompt template by injecting system info
  */
-export function processPromptTemplate(tools: Tool[]): string {
+export function processPromptTemplate(): string {
 	let systemPrompt = 'You are a helpful AI assistant.'; // fallback
 
 	// Load base prompt
@@ -85,7 +84,8 @@ export function processPromptTemplate(tools: Tool[]): string {
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
-			console.warn(
+			const logger = getLogger();
+			logger.warn(
 				`Failed to load system prompt from ${promptPath}: ${errorMessage}`,
 			);
 		}
@@ -93,9 +93,6 @@ export function processPromptTemplate(tools: Tool[]): string {
 
 	// Inject system information
 	systemPrompt = injectSystemInfo(systemPrompt);
-
-	// Inject dynamic tool documentation
-	systemPrompt = injectToolDocumentation(systemPrompt, tools);
 
 	// Check for AGENTS.md in current working directory and append it
 	const agentsPath = join(process.cwd(), 'AGENTS.md');
@@ -106,113 +103,14 @@ export function processPromptTemplate(tools: Tool[]): string {
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
-			console.warn(
+			const logger = getLogger();
+			logger.warn(
 				`Failed to load AGENTS.md from ${agentsPath}: ${errorMessage}`,
 			);
 		}
 	}
 
 	return systemPrompt;
-}
-
-/**
- * Inject dynamic tool documentation into the prompt template
- */
-function injectToolDocumentation(prompt: string, tools: Tool[]): string {
-	if (tools.length === 0) {
-		return prompt.replace(
-			/<!-- DYNAMIC_TOOLS_SECTION_START -->[\s\S]*?<!-- DYNAMIC_TOOLS_SECTION_END -->/,
-			'No additional tools are currently available.',
-		);
-	}
-
-	// Generate tool documentation
-	const toolDocs = generateToolDocumentation(tools);
-
-	// Replace the dynamic section
-	return prompt.replace(
-		/<!-- DYNAMIC_TOOLS_SECTION_START -->[\s\S]*?<!-- DYNAMIC_TOOLS_SECTION_END -->/,
-		toolDocs,
-	);
-}
-
-/**
- * Generate formatted documentation for all available tools
- */
-function generateToolDocumentation(tools: Tool[]): string {
-	const sections = ['Available Tools\n'];
-
-	// Group tools by category (built-in vs MCP)
-	const builtInTools = tools.filter(tool => !tool.function.name.includes('__'));
-	const mcpTools = tools.filter(tool => tool.function.name.includes('__'));
-
-	if (builtInTools.length > 0) {
-		sections.push('Built-in Tools:\n');
-		builtInTools.forEach(tool => {
-			sections.push(formatToolDocumentation(tool));
-		});
-	}
-
-	if (mcpTools.length > 0) {
-		sections.push('\nMCP Tools:\n');
-		mcpTools.forEach(tool => {
-			sections.push(formatToolDocumentation(tool));
-		});
-	}
-
-	// Add XML format examples for all models
-	if (tools.length > 0) {
-		sections.push('\nXML Format Examples:\n');
-
-		// Show tool examples in XML format
-		tools.forEach(tool => {
-			const params = tool.function.parameters?.properties || {};
-			const paramNames = Object.keys(params).slice(0, 2); // Show max 2 params per example
-
-			sections.push(`${tool.function.name}:`);
-			sections.push('```xml');
-			sections.push(`<${tool.function.name}>`);
-			paramNames.forEach(paramName => {
-				sections.push(`<${paramName}>value</${paramName}>`);
-			});
-			sections.push(`</${tool.function.name}>`);
-			sections.push('```\n');
-		});
-	}
-
-	return sections.join('\n');
-}
-
-/**
- * Format documentation for a single tool
- */
-interface ParameterSchema {
-	description?: string;
-	type?: string;
-	[key: string]: unknown;
-}
-
-function formatToolDocumentation(tool: Tool): string {
-	const {name, description, parameters} = tool.function;
-
-	let doc = `${name}: ${description}\n`;
-
-	if (parameters.properties && Object.keys(parameters.properties).length > 0) {
-		doc += 'Parameters:\n';
-		Object.entries(parameters.properties).forEach(
-			([paramName, schema]: [string, ParameterSchema]) => {
-				const required = parameters.required?.includes(paramName)
-					? ' (required)'
-					: ' (optional)';
-				const paramDescription =
-					schema.description || schema.type || 'No description';
-				doc += `- ${paramName}${required}: ${paramDescription}\n`;
-			},
-		);
-		doc += '\n';
-	}
-
-	return doc;
 }
 
 /**
@@ -236,8 +134,13 @@ export function assemblePrompt(inputState: InputState): string {
 					break;
 				}
 				case PlaceholderType.FILE: {
-					// For file, could add file headers or other formatting
-					replacementContent = placeholderContent.content;
+					// Format file content with header for LLM context
+					const fileName =
+						placeholderContent.filePath.split('/').pop() ||
+						placeholderContent.filePath;
+					const header = `=== File: ${fileName} ===`;
+					const footer = '='.repeat(header.length);
+					replacementContent = `${header}\n${placeholderContent.content}\n${footer}`;
 					break;
 				}
 				default: {

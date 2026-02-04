@@ -1,10 +1,10 @@
-import React, {useEffect, useState} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
+import {useEffect, useState} from 'react';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
+import {useTerminalWidth} from '@/hooks/useTerminalWidth';
 import {useTheme} from '@/hooks/useTheme';
 import {LLMClient} from '@/types/core';
-import {useTerminalWidth} from '@/hooks/useTerminalWidth';
 
 interface ModelSelectorProps {
 	client: LLMClient | null;
@@ -76,11 +76,8 @@ export default function ModelSelector({
 
 	if (loading) {
 		return (
-			<TitledBox
-				key={colors.primary}
-				borderStyle="round"
-				titles={['Model Selection']}
-				titleStyles={titleStyles.pill}
+			<TitledBoxWithPreferences
+				title="Model Selection"
 				width={boxWidth}
 				borderColor={colors.primary}
 				paddingX={2}
@@ -88,16 +85,14 @@ export default function ModelSelector({
 				marginBottom={1}
 			>
 				<Text color={colors.secondary}>Loading available models...</Text>
-			</TitledBox>
+			</TitledBoxWithPreferences>
 		);
 	}
 
 	if (error) {
 		return (
-			<TitledBox
-				borderStyle="round"
-				titles={['Model Selection - Error']}
-				titleStyles={titleStyles.pill}
+			<TitledBoxWithPreferences
+				title="Model Selection - Error"
 				width={boxWidth}
 				borderColor={colors.error}
 				paddingX={2}
@@ -113,15 +108,13 @@ export default function ModelSelector({
 						<Text color={colors.secondary}>Press Escape to cancel</Text>
 					</Box>
 				</Box>
-			</TitledBox>
+			</TitledBoxWithPreferences>
 		);
 	}
 
 	return (
-		<TitledBox
-			borderStyle="round"
-			titles={['Select a Model']}
-			titleStyles={titleStyles.pill}
+		<TitledBoxWithPreferences
+			title="Select a Model"
 			width={boxWidth}
 			borderColor={colors.primary}
 			paddingX={2}
@@ -134,6 +127,6 @@ export default function ModelSelector({
 					<Text color={colors.secondary}>Press Escape to cancel</Text>
 				</Box>
 			</Box>
-		</TitledBox>
+		</TitledBoxWithPreferences>
 	);
 }

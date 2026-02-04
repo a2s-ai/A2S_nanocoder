@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
   check-version:
@@ -22,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Check version difference
         id: version-check
@@ -55,7 +56,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Setup pnpm
@@ -63,11 +64,14 @@ jobs:
         with:
           version: latest
 
-      - name: Install dependencies
+      - name: Install dependencies (including VS Code extension)
         run: pnpm install --frozen-lockfile
 
       - name: Build project
         run: pnpm run build
+
+      - name: Build VS Code extension
+        run: pnpm run build:vscode
 
       - name: Run tests
         run: pnpm test:all
@@ -79,6 +83,11 @@ jobs:
             exit 1
           fi
           echo "✅ Build successful: dist/cli.js exists"
+          if [ ! -f "assets/nanocoder-vscode.vsix" ]; then
+            echo "❌ Build failed: VS Code extension not found"
+            exit 1
+          fi
+          echo "✅ VS Code extension built: assets/nanocoder-vscode.vsix exists"
 
       - name: Extract Changelog
         id: changelog
@@ -157,8 +166,26 @@ jobs:
             }' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
 
-  notify:
+  update-nix:
     needs: [check-version, publish]
+    if: needs.check-version.outputs.should-publish == 'true'
+    uses: ./.github/workflows/update-nix.yml
+    with:
+      version: ${{ needs.check-version.outputs.package-version }}
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+  update-homebrew:
+    needs: [check-version, publish, update-nix]
+    if: needs.check-version.outputs.should-publish == 'true'
+    uses: ./.github/workflows/update-homebrew.yml
+    with:
+      version: ${{ needs.check-version.outputs.package-version }}
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+  notify:
+    needs: [check-version, publish, update-nix, update-homebrew]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -167,6 +194,16 @@ jobs:
           if [ "${{ needs.check-version.outputs.should-publish }}" == "true" ]; then
             if [ "${{ needs.publish.result }}" == "success" ]; then
               echo "🎉 Successfully published @nanocollective/nanocoder v${{ needs.check-version.outputs.package-version }} to NPM and created GitHub release!"
+              if [ "${{ needs.update-nix.result }}" == "success" ]; then
+                echo "✅ Nix package updated successfully!"
+              else
+                echo "⚠️ Warning: Nix package update failed"
+              fi
+              if [ "${{ needs.update-homebrew.result }}" == "success" ]; then
+                echo "✅ Homebrew formula updated successfully!"
+              else
+                echo "⚠️ Warning: Homebrew formula update failed"
+              fi
             else
               echo "❌ Failed to publish @nanocollective/nanocoder v${{ needs.check-version.outputs.package-version }}"
               exit 1

@@ -1,15 +1,15 @@
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {Box, Text} from 'ink';
-import {memo} from 'react';
-
-import {useTheme} from '@/hooks/useTheme';
-import {useResponsiveTerminal} from '@/hooks/useTerminalWidth';
-
 import fs from 'fs';
-import path from 'path';
-import {fileURLToPath} from 'url';
+import {Box, Text} from 'ink';
 import BigText from 'ink-big-text';
 import Gradient from 'ink-gradient';
+import path from 'path';
+import {memo} from 'react';
+import {fileURLToPath} from 'url';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
+import {getNanocoderShape} from '@/config/preferences';
+import {useResponsiveTerminal} from '@/hooks/useTerminalWidth';
+import {useTheme} from '@/hooks/useTheme';
+import type {NanocoderShape} from '@/types/ui';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,9 +19,14 @@ const packageJson = JSON.parse(
 	fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'),
 ) as {version: string};
 
+const DEFAULT_SHAPE: NanocoderShape = 'tiny';
+
 export default memo(function WelcomeMessage() {
 	const {boxWidth, isNarrow, isNormal} = useResponsiveTerminal();
 	const {colors} = useTheme();
+
+	// Get the user's preferred nanocoder shape or use default
+	const nanocoderShape = getNanocoderShape() ?? DEFAULT_SHAPE;
 
 	return (
 		<>
@@ -29,7 +34,7 @@ export default memo(function WelcomeMessage() {
 			{isNarrow ? (
 				<>
 					<Gradient colors={[colors.primary, colors.tool]}>
-						<BigText text="NC" font="tiny" />
+						<BigText text="NC" font={nanocoderShape} />
 					</Gradient>
 					<Box
 						flexDirection="column"
@@ -41,28 +46,25 @@ export default memo(function WelcomeMessage() {
 					>
 						<Box marginBottom={1}>
 							<Text color={colors.primary} bold>
-								✻ Version {packageJson.version}
+								✻ Version {packageJson.version} ✻
 							</Text>
 						</Box>
 
-						<Text color={colors.white}>Quick tips:</Text>
+						<Text color={colors.text}>Quick tips:</Text>
 						<Text color={colors.secondary}>• Use natural language</Text>
 						<Text color={colors.secondary}>• /help for commands</Text>
 						<Text color={colors.secondary}>• Ctrl+C to quit</Text>
 					</Box>
 				</>
 			) : (
-				/* Normal/Wide terminal: full version with TitledBox */
+				/* Normal/Wide terminal: full version with TitledBoxWithPreferences */
 				<>
 					<Gradient colors={[colors.primary, colors.tool]}>
-						<BigText text="Nanocoder" font="tiny" />
+						<BigText text="Nanocoder" font={nanocoderShape} />
 					</Gradient>
 
-					<TitledBox
-						key={colors.primary}
-						borderStyle="round"
-						titles={[`✻ Welcome to Nanocoder ${packageJson.version}`]}
-						titleStyles={titleStyles.pill}
+					<TitledBoxWithPreferences
+						title={`✻ Welcome to Nanocoder ${packageJson.version} ✻`}
 						width={boxWidth}
 						borderColor={colors.primary}
 						paddingX={2}
@@ -71,7 +73,7 @@ export default memo(function WelcomeMessage() {
 						marginBottom={1}
 					>
 						<Box paddingBottom={1}>
-							<Text color={colors.white}>Tips for getting started:</Text>
+							<Text color={colors.text}>Tips for getting started:</Text>
 						</Box>
 						<Box paddingBottom={1} flexDirection="column">
 							<Text color={colors.secondary}>
@@ -91,8 +93,8 @@ export default memo(function WelcomeMessage() {
 								4. Type /exit or press Ctrl+C to quit.
 							</Text>
 						</Box>
-						<Text color={colors.white}>/help for help</Text>
-					</TitledBox>
+						<Text color={colors.text}>/help for help</Text>
+					</TitledBoxWithPreferences>
 				</>
 			)}
 		</>

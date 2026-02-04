@@ -6,14 +6,16 @@
   pkgs,
   stdenv,
   fetchFromGitHub,
+  nodejs,
+  pnpm_9,
   ...
 }:
 
 let
-  version = "1.14.3";
+  version = "1.21.0";
 in
 
-stdenv.mkDerivation {
+stdenv.mkDerivation (finalAttrs: {
   pname = "nanocoder";
   inherit version;
 
@@ -21,44 +23,45 @@ stdenv.mkDerivation {
     owner = "nano-collective";
     repo = "nanocoder";
     rev = "v${version}";
-    sha256 = "sha256-OuXdv48m9PiWWJvb6hSK1Y1JBpGAu02YIM9XQSziUQI=";
+    sha256 = "sha256-+/zoszMASRtrq9+ZPp6qEFdnTP83Gpd6dSp3Ttx4hdc=";
   };
 
-  buildInputs = with pkgs; [
-    nodejs_20
-    cacert
-    makeWrapper
+  nativeBuildInputs = [
+    nodejs
+    pnpm_9.configHook
   ];
 
+  pnpmDeps = pnpm_9.fetchDeps {
+    inherit (finalAttrs) pname version src;
+    hash = "sha256-gdGTsHIMg6utqbMwF8WOnD1aIrP11rKXp+SXnRt+zQs=";
+    fetcherVersion = 2;
+  };
+
   buildPhase = ''
-    export HOME=$PWD
     runHook preBuild
-
-    npm install --verbose
-    npm run build --verbose
-
+    pnpm run build
     runHook postBuild
   '';
-
-  fixupPhase = ":";
 
   installPhase = ''
     runHook preInstall
 
     mkdir -p $out/bin
-    mkdir -p $out/node_modules
-    mkdir -p $out/dist
+    mkdir -p $out/lib/nanocoder
 
-    cp package.json $out/package.json
-    cp -r dist/* $out/dist/
-    cp -r node_modules/* $out/node_modules/
+    # Copy built files
+    cp -r dist $out/lib/nanocoder/
+    cp -r node_modules $out/lib/nanocoder/
+    cp package.json $out/lib/nanocoder/
+    cp -r plugins $out/lib/nanocoder/
 
+    # Create wrapper script
     cat > $out/bin/nanocoder <<EOF
-      #!/usr/bin/env bash
-      NODE_PATH="$out/node_modules" exec ${pkgs.nodejs_20}/bin/node "$out/dist/cli.js" "\$@"
-    EOF
+#!/usr/bin/env bash
+NODE_PATH="$out/lib/nanocoder/node_modules" exec ${nodejs}/bin/node "$out/lib/nanocoder/dist/cli.js" "\$@"
+EOF
 
-    chmod a+x $out/bin/nanocoder
+    chmod +x $out/bin/nanocoder
 
     runHook postInstall
   '';
@@ -69,4 +72,4 @@ stdenv.mkDerivation {
     license = licenses.mit;
     maintainers = with maintainers; [ lalit64 ];
   };
-}
+})

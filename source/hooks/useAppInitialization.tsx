@@ -1,40 +1,52 @@
 import React, {useEffect} from 'react';
-import {LLMClient} from '@/types/core';
-import {ToolManager} from '@/tools/tool-manager';
-import {CustomCommandLoader} from '@/custom-commands/loader';
-import {CustomCommandExecutor} from '@/custom-commands/executor';
-import {createLLMClient, ConfigurationError} from '@/client-factory';
+import {ConfigurationError, createLLMClient} from '@/client-factory';
+import {commandRegistry} from '@/commands';
+import {
+	checkpointCommand,
+	clearCommand,
+	commandsCommand,
+	compactCommand,
+	exitCommand,
+	explorerCommand,
+	exportCommand,
+	helpCommand,
+	initCommand,
+	lspCommand,
+	mcpCommand,
+	modelCommand,
+	modelDatabaseCommand,
+	providerCommand,
+	quitCommand,
+	settingsCommand,
+	setupMcpCommand,
+	setupProvidersCommand,
+	statusCommand,
+	tasksCommand,
+	updateCommand,
+	usageCommand,
+} from '@/commands/index';
+import {ErrorMessage, InfoMessage} from '@/components/message-box';
+import {appConfig, reloadAppConfig} from '@/config/index';
 import {
 	getLastUsedModel,
 	loadPreferences,
 	updateLastUsed,
 } from '@/config/preferences';
-import type {MCPInitResult, UserPreferences} from '@/types/index';
-import type {CustomCommand} from '@/types/commands';
+import {validateProjectConfigSecurity} from '@/config/validation';
+import {CustomCommandExecutor} from '@/custom-commands/executor';
+import {CustomCommandLoader} from '@/custom-commands/loader';
+import {getLSPManager, type LSPInitResult} from '@/lsp/index';
 import {setToolManagerGetter, setToolRegistryGetter} from '@/message-handler';
-import {commandRegistry} from '@/commands';
-import {appConfig} from '@/config/index';
+import {clearAllTasks} from '@/tools/tasks';
+import {ToolManager} from '@/tools/tool-manager';
+import type {CustomCommand} from '@/types/commands';
 import {
-	clearCommand,
-	commandsCommand,
-	exitCommand,
-	exportCommand,
-	helpCommand,
-	initCommand,
-	mcpCommand,
-	modelCommand,
-	providerCommand,
-	recommendationsCommand,
-	setupConfigCommand,
-	statusCommand,
-	themeCommand,
-	updateCommand,
-} from '@/commands/index';
-import SuccessMessage from '@/components/success-message';
-import ErrorMessage from '@/components/error-message';
-import InfoMessage from '@/components/info-message';
+	LLMClient,
+	LSPConnectionStatus,
+	MCPConnectionStatus,
+} from '@/types/core';
+import type {MCPInitResult, UpdateInfo, UserPreferences} from '@/types/index';
 import {checkForUpdates} from '@/utils/update-checker';
-import type {UpdateInfo} from '@/types/index';
 
 interface UseAppInitializationProps {
 	setClient: (client: LLMClient | null) => void;
@@ -47,8 +59,12 @@ interface UseAppInitializationProps {
 	setStartChat: (start: boolean) => void;
 	setMcpInitialized: (initialized: boolean) => void;
 	setUpdateInfo: (info: UpdateInfo | null) => void;
+	setMcpServersStatus: (status: MCPConnectionStatus[]) => void;
+	setLspServersStatus: (status: LSPConnectionStatus[]) => void;
+	setPreferencesLoaded: (loaded: boolean) => void;
+	setCustomCommandsCount: (count: number) => void;
 	addToChatQueue: (component: React.ReactNode) => void;
-	componentKeyCounter: number;
+	getNextComponentKey: () => number;
 	customCommandCache: Map<string, CustomCommand>;
 	setIsConfigWizardMode: (mode: boolean) => void;
 }
@@ -64,8 +80,12 @@ export function useAppInitialization({
 	setStartChat,
 	setMcpInitialized,
 	setUpdateInfo,
+	setMcpServersStatus,
+	setLspServersStatus,
+	setPreferencesLoaded,
+	setCustomCommandsCount,
 	addToChatQueue,
-	componentKeyCounter,
+	getNextComponentKey,
 	customCommandCache,
 	setIsConfigWizardMode,
 }: UseAppInitializationProps) {
@@ -114,73 +134,172 @@ export function useAppInitialization({
 			}
 		}
 
-		if (customCommands.length > 0) {
-			addToChatQueue(
-				<SuccessMessage
-					key={`custom-commands-loaded-${componentKeyCounter}`}
-					message={`Loaded ${customCommands.length} custom commands from .nanocoder/commands...`}
-					hideBox={true}
-				/>,
-			);
-		}
+		// Set the count for display in Status component
+		setCustomCommandsCount(customCommands.length);
 	};
 
 	// Initialize MCP servers if configured
 	const initializeMCPServers = async (toolManager: ToolManager) => {
 		if (appConfig.mcpServers && appConfig.mcpServers.length > 0) {
-			// Add connecting message to chat queue
-			addToChatQueue(
-				<InfoMessage
-					key={`mcp-connecting-${componentKeyCounter}`}
-					message={`Connecting to ${appConfig.mcpServers.length} MCP server${
-						appConfig.mcpServers.length > 1 ? 's' : ''
-					}...`}
-					hideBox={true}
-				/>,
+			// Validate security for project-level configurations
+			validateProjectConfigSecurity(appConfig.mcpServers);
+
+			// Initialize status array
+			const mcpStatus: MCPConnectionStatus[] = appConfig.mcpServers.map(
+				server => ({
+					name: server.name,
+					status: 'pending' as const,
+				}),
 			);
 
-			// Define progress callback to show live updates
+			// Define progress callback to update status silently
 			const onProgress = (result: MCPInitResult) => {
-				if (result.success) {
-					addToChatQueue(
-						<SuccessMessage
-							key={`mcp-success-${result.serverName}-${componentKeyCounter}`}
-							message={`Connected to MCP server "${result.serverName}" with ${result.toolCount} tools`}
-							hideBox={true}
-						/>,
-					);
-				} else {
-					addToChatQueue(
-						<ErrorMessage
-							key={`mcp-error-${result.serverName}-${componentKeyCounter}`}
-							message={`Failed to connect to MCP server "${result.serverName}": ${result.error}`}
-							hideBox={true}
-						/>,
-					);
+				const statusIndex = mcpStatus.findIndex(
+					s => s.name === result.serverName,
+				);
+				if (statusIndex !== -1) {
+					if (result.success) {
+						mcpStatus[statusIndex] = {
+							name: result.serverName,
+							status: 'connected',
+						};
+					} else {
+						mcpStatus[statusIndex] = {
+							name: result.serverName,
+							status: 'failed',
+							errorMessage: result.error,
+						};
+					}
+					// Update the state with current status
+					setMcpServersStatus([...mcpStatus]);
 				}
 			};
 
 			try {
 				await toolManager.initializeMCP(appConfig.mcpServers, onProgress);
 			} catch (error) {
-				addToChatQueue(
-					<ErrorMessage
-						key={`mcp-fatal-error-${componentKeyCounter}`}
-						message={`Failed to initialize MCP servers: ${String(error)}`}
-						hideBox={true}
-					/>,
-				);
+				// Mark all pending servers as failed
+				mcpStatus.forEach((status, index) => {
+					if (status.status === 'pending') {
+						mcpStatus[index] = {
+							...status,
+							status: 'failed',
+							errorMessage: String(error),
+						};
+					}
+				});
+				setMcpServersStatus([...mcpStatus]);
 			}
 			// Mark MCP as initialized whether successful or not
 			setMcpInitialized(true);
 		} else {
-			// No MCP servers configured, mark as initialized immediately
+			// No MCP servers configured, set empty status
+			setMcpServersStatus([]);
 			setMcpInitialized(true);
 		}
 	};
 
+	// Initialize LSP servers with auto-discovery
+	const initializeLSPServers = async () => {
+		const lspManager = await getLSPManager({
+			rootUri: `file://${process.cwd()}`,
+			autoDiscover: true,
+			// Use custom servers from config if provided
+			servers: appConfig.lspServers?.map(server => ({
+				name: server.name,
+				command: server.command,
+				args: server.args,
+				languages: server.languages,
+				env: server.env,
+			})),
+		});
+
+		// Initialize status array for configured servers
+		const lspStatus: LSPConnectionStatus[] = [];
+
+		// Add configured servers to status
+		if (appConfig.lspServers) {
+			for (const server of appConfig.lspServers) {
+				lspStatus.push({
+					name: server.name,
+					status: 'pending',
+				});
+			}
+		}
+
+		// Define progress callback to update status silently
+		const onProgress = (result: LSPInitResult) => {
+			const statusIndex = lspStatus.findIndex(
+				s => s.name === result.serverName,
+			);
+			if (statusIndex !== -1) {
+				if (result.success) {
+					lspStatus[statusIndex] = {
+						name: result.serverName,
+						status: 'connected',
+					};
+				} else {
+					// Don't mark auto-discovery failures as errors
+					lspStatus[statusIndex] = {
+						name: result.serverName,
+						status: 'failed',
+						errorMessage: result.error,
+					};
+				}
+				// Update the state with current status
+				setLspServersStatus([...lspStatus]);
+			}
+			// For auto-discovered servers, add them if successful
+			else if (result.success) {
+				lspStatus.push({
+					name: result.serverName,
+					status: 'connected',
+				});
+				setLspServersStatus([...lspStatus]);
+			}
+		};
+
+		try {
+			await lspManager.initialize({
+				autoDiscover: true,
+				servers: appConfig.lspServers?.map(server => ({
+					name: server.name,
+					command: server.command,
+					args: server.args,
+					languages: server.languages,
+					env: server.env,
+				})),
+				onProgress,
+			});
+
+			// Mark any remaining pending servers as failed
+			lspStatus.forEach((status, index) => {
+				if (status.status === 'pending') {
+					lspStatus[index] = {
+						...status,
+						status: 'failed',
+						errorMessage: 'Connection timeout',
+					};
+				}
+			});
+			setLspServersStatus([...lspStatus]);
+		} catch (error) {
+			// Mark all pending servers as failed
+			lspStatus.forEach((status, index) => {
+				if (status.status === 'pending') {
+					lspStatus[index] = {
+						...status,
+						status: 'failed',
+						errorMessage: String(error),
+					};
+				}
+			});
+			setLspServersStatus([...lspStatus]);
+		}
+	};
+
 	const start = async (
-		newToolManager: ToolManager,
+		_newToolManager: ToolManager,
 		newCustomCommandLoader: CustomCommandLoader,
 		preferences: UserPreferences,
 	): Promise<void> => {
@@ -191,7 +310,7 @@ export function useAppInitialization({
 			if (error instanceof ConfigurationError) {
 				addToChatQueue(
 					<InfoMessage
-						key={`config-error-${componentKeyCounter}`}
+						key={`config-error-${getNextComponentKey()}`}
 						message="Configuration needed. Let's set up your providers..."
 						hideBox={true}
 					/>,
@@ -204,7 +323,7 @@ export function useAppInitialization({
 				// Regular error - show simple error message
 				addToChatQueue(
 					<ErrorMessage
-						key={`init-error-${componentKeyCounter}`}
+						key={`init-error-${getNextComponentKey()}`}
 						message={`No providers available: ${String(error)}`}
 						hideBox={true}
 					/>,
@@ -218,7 +337,7 @@ export function useAppInitialization({
 		} catch (error) {
 			addToChatQueue(
 				<ErrorMessage
-					key={`commands-error-${componentKeyCounter}`}
+					key={`commands-error-${getNextComponentKey()}`}
 					message={`Failed to load custom commands: ${String(error)}`}
 					hideBox={true}
 				/>,
@@ -226,10 +345,14 @@ export function useAppInitialization({
 		}
 	};
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: Initialization effect should only run once on mount
 	useEffect(() => {
 		const initializeApp = async () => {
 			setClient(null);
 			setCurrentModel('');
+
+			// Clear task list at startup for fresh session
+			await clearAllTasks();
 
 			const newToolManager = new ToolManager();
 			const newCustomCommandLoader = new CustomCommandLoader();
@@ -242,14 +365,8 @@ export function useAppInitialization({
 			// Load preferences - we'll pass them directly to avoid state timing issues
 			const preferences = loadPreferences();
 
-			// Add info message to chat queue when preferences are loaded
-			addToChatQueue(
-				<SuccessMessage
-					key="preferences-loaded"
-					message="User preferences loaded..."
-					hideBox={true}
-				/>,
-			);
+			// Mark preferences as loaded for display in Status component
+			setPreferencesLoaded(true);
 
 			// Set up the tool registry getter for the message handler
 			setToolRegistryGetter(() => newToolManager.getToolRegistry());
@@ -261,17 +378,25 @@ export function useAppInitialization({
 				helpCommand,
 				exitCommand,
 				clearCommand,
+				compactCommand,
 				modelCommand,
 				providerCommand,
 				commandsCommand,
+				lspCommand,
 				mcpCommand,
 				initCommand,
-				themeCommand,
+				explorerCommand,
 				exportCommand,
 				updateCommand,
-				recommendationsCommand,
+				modelDatabaseCommand,
 				statusCommand,
-				setupConfigCommand,
+				setupProvidersCommand,
+				setupMcpCommand,
+				usageCommand,
+				checkpointCommand,
+				quitCommand,
+				tasksCommand,
+				settingsCommand,
 			]);
 
 			// Now start with the properly initialized objects (excluding MCP)
@@ -286,19 +411,29 @@ export function useAppInitialization({
 				setUpdateInfo(null);
 			}
 
-			setStartChat(true);
-
-			// Initialize MCP servers after UI is shown
+			// Initialize MCP servers before showing UI
 			await initializeMCPServers(newToolManager);
+
+			// Initialize LSP servers with auto-discovery
+			await initializeLSPServers();
+
+			// Show chat UI after all servers are initialized
+			setStartChat(true);
 		};
 
 		void initializeApp();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	return {
 		initializeClient,
 		loadCustomCommands,
 		initializeMCPServers,
+		reinitializeMCPServers: async (toolManager: ToolManager) => {
+			// Reload app config to get latest MCP servers
+			reloadAppConfig();
+			// Reinitialize MCP servers with new configuration
+			await initializeMCPServers(toolManager);
+		},
+		initializeLSPServers,
 	};
 }

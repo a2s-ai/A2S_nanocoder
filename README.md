@@ -75,25 +75,42 @@ A local-first CLI coding agent that brings the power of agentic coding tools lik
 
 ![Example](./.github/assets/example.gif)
 
+---
+![Build Status](https://github.com/Nano-Collective/nanocoder/raw/main/badges/build.svg)
+![Coverage](https://github.com/Nano-Collective/nanocoder/raw/main/badges/coverage.svg)
+![Version](https://github.com/Nano-Collective/nanocoder/raw/main/badges/npm-version.svg)
+![NPM Downloads](https://github.com/Nano-Collective/nanocoder/raw/main/badges/npm-downloads-monthly.svg)
+![NPM License](https://github.com/Nano-Collective/nanocoder/raw/main/badges/npm-license.svg)
+![Repo Size](https://github.com/Nano-Collective/nanocoder/raw/main/badges/repo-size.svg)
+![Stars](https://github.com/Nano-Collective/nanocoder/raw/main/badges/stars.svg)
+![Forks](https://github.com/Nano-Collective/nanocoder/raw/main/badges/forks.svg)
+
+
 ## Table of Contents
 
 - [FAQs](#faqs)
 - [Installation](#installation)
   - [For Users](#for-users)
   - [For Development](#for-development)
+- [Usage](#usage)
+  - [Interactive Mode](#interactive-mode)
+  - [Non-Interactive Mode](#non-interactive-mode)
 - [Configuration](#configuration)
   - [AI Provider Setup](#ai-provider-setup)
   - [MCP (Model Context Protocol) Servers](#mcp-model-context-protocol-servers)
   - [User Preferences](#user-preferences)
+  - [Application Data Directory](#application-data-directory)
   - [Commands](#commands)
     - [Built-in Commands](#built-in-commands)
     - [Custom Commands](#custom-commands)
 - [Features](#features)
-  - [Multi-Provider Support](#-multi-provider-support)
-  - [Advanced Tool System](#️-advanced-tool-system)
-  - [Custom Command System](#-custom-command-system)
-  - [Enhanced User Experience](#-enhanced-user-experience)
-  - [Developer Features](#️-developer-features)
+  - [Multi-Provider Support](#multi-provider-support)
+  - [Advanced Tool System](#advanced-tool-system)
+  - [Custom Command System](#custom-command-system)
+  - [Enhanced User Experience](#enhanced-user-experience)
+  - [Keyboard Shortcuts](#keyboard-shortcuts)
+  - [Developer Features](#developer-features)
+- [VS Code Extension](#vs-code-extension)
 - [Community](#community)
 
 ## FAQs
@@ -118,7 +135,7 @@ Firstly, we would love for you to be involved. You can get started contributing 
 
 ### For Users
 
-#### NPM (Recommended)
+#### NPM
 
 Install globally and use anywhere:
 
@@ -131,6 +148,38 @@ Then run in any directory:
 ```bash
 nanocoder
 ```
+
+#### Homebrew (macOS/Linux)
+
+First, tap the repository:
+
+```bash
+brew tap nano-collective/nanocoder https://github.com/Nano-Collective/nanocoder
+```
+
+Then install:
+
+```bash
+brew install nanocoder
+```
+
+Run in any directory:
+
+```bash
+nanocoder
+```
+
+To update:
+
+```bash
+# Update Homebrew's tap cache first (important!)
+brew update
+
+# Then upgrade nanocoder
+brew upgrade nanocoder
+```
+
+> **Note**: If `brew upgrade nanocoder` shows the old version is already installed, run `brew update` first. Homebrew caches tap formulas locally and only refreshes them during `brew update`. Without updating the tap cache, you'll see the cached (older) version even if a newer formula exists in the repository.
 
 #### Nix Flakes
 
@@ -171,8 +220,8 @@ If you want to contribute or modify Nanocoder:
 
 **Prerequisites:**
 
-- Node.js 18+
-- npm
+- Node.js 20+
+- pnpm
 
 **Setup:**
 
@@ -181,25 +230,121 @@ If you want to contribute or modify Nanocoder:
 ```bash
 git clone [repo-url]
 cd nanocoder
-npm install
+pnpm install
 ```
 
 2. Build the project:
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 3. Run locally:
 
 ```bash
-npm run start
+pnpm run start
 ```
 
 Or build and run in one command:
 
 ```bash
-npm run dev
+pnpm run dev
+```
+
+## Usage
+
+### CLI Options
+
+Nanocoder supports standard CLI arguments for quick information and help:
+
+```bash
+# Show version information
+nanocoder --version
+nanocoder -v
+
+# Show help and available options
+nanocoder --help
+nanocoder -h
+```
+
+**CLI Options Reference:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--version` | `-v` | Display the installed version number |
+| `--help` | `-h` | Show usage information and available options |
+| `--vscode` | | Run in VS Code mode (for extension) |
+| `--vscode-port` | | Specify VS Code server port |
+| `run` | | Run in non-interactive mode |
+
+**Common Use Cases:**
+
+```bash
+# Check version in scripts
+echo "Nanocoder version: $(nanocoder --version)"
+
+# Get help in CI/CD pipelines
+nanocoder --help
+
+# Quick version check
+nanocoder -v
+
+# Discover available options
+nanocoder -h
+```
+
+### Interactive Mode
+
+To start Nanocoder in interactive mode (the default), simply run:
+
+```bash
+nanocoder
+```
+
+This will open an interactive chat session where you can:
+
+- Chat with the AI about your code
+- Use slash commands (e.g., `/help`, `/model`, `/status`)
+- Execute bash commands with `!`
+- Tag files with `@`
+- Review and approve tool executions
+- Switch between different models and providers
+
+### Non-Interactive Mode
+
+For automated tasks, scripting, or CI/CD pipelines, use the `run` command:
+
+```bash
+nanocoder run "your prompt here"
+```
+
+**Examples:**
+
+```bash
+# Simple task
+nanocoder run "analyze the code in src/app.ts"
+
+# Code generation
+nanocoder run "create a new React component for user login"
+
+# Testing
+nanocoder run "write unit tests for all functions in utils.js"
+
+# Refactoring
+nanocoder run "refactor the database connection to use a connection pool"
+```
+
+**Non-interactive mode behavior:**
+
+- Automatically executes the given prompt
+- Runs in auto-accept mode (tools execute without confirmation)
+- Displays all output and tool execution results
+- Exits automatically when the task is complete
+
+**Note:** When using non-interactive mode with VS Code integration, place any flags (like `--vscode` or `--vscode-port`) before the `run` command:
+
+```bash
+nanocoder --vscode run "your prompt"
 ```
 
 ## Configuration
@@ -210,8 +355,15 @@ Nanocoder supports any OpenAI-compatible API through a unified provider configur
 
 **Configuration Methods:**
 
-1. **Interactive Setup (Recommended for new users)**: Run `/setup-config` inside Nanocoder for a guided wizard with provider templates
+1. **Interactive Setup (Recommended for new users)**: Run `/setup-providers` inside Nanocoder for a guided wizard with provider templates. The wizard allows you to:
+   - Choose between project-level or global configuration
+   - Select from common provider templates (Ollama, OpenRouter, LM Studio, etc.)
+   - Add custom OpenAI-compatible providers manually
+   - Edit or delete existing providers
+   - Fetch available models automatically from your provider
 2. **Manual Configuration**: Create an `agents.config.json` file (see below for locations)
+
+> **Note**: The `/setup-providers` wizard requires at least one provider to be configured before saving. You cannot exit without adding a provider.
 
 **Configuration File Locations:**
 
@@ -222,13 +374,15 @@ Nanocoder looks for configuration in the following order (first found wins):
    - Use this for project-specific providers, models, or API keys
    - Perfect for team sharing or repository-specific configurations
 
-2. **User-level (preferred)**: Platform-specific application data directory
+2. **User-level (preferred)**: Platform-specific configuration directory
 
    - **macOS**: `~/Library/Preferences/nanocoder/agents.config.json`
    - **Linux/Unix**: `~/.config/nanocoder/agents.config.json`
    - **Windows**: `%APPDATA%\nanocoder\agents.config.json`
    - Your global default configuration
    - Used when no project-level config exists
+
+   You can override this global configuration directory by setting `NANOCODER_CONFIG_DIR`. When set, Nanocoder will look for `agents.config.json` and related config files directly in this directory.
 
 3. **User-level (legacy)**: `~/.agents.config.json`
    - Supported for backward compatibility
@@ -265,13 +419,32 @@ Nanocoder looks for configuration in the following order (first found wins):
 				"name": "Z.ai",
 				"baseUrl": "https://api.z.ai/api/paas/v4/",
 				"apiKey": "your-z.ai-api-key",
-				"models": ["glm-4.6", "glm-4.5", "glm-4.5-air"]
+				"models": ["glm-4.7", "glm-4.5", "glm-4.5-air"]
 			},
 			{
 				"name": "Z.ai Coding Subscription",
 				"baseUrl": "https://api.z.ai/api/coding/paas/v4/",
 				"apiKey": "your-z.ai-coding-api-key",
-				"models": ["glm-4.6", "glm-4.5", "glm-4.5-air"]
+				"models": ["glm-4.7", "glm-4.5", "glm-4.5-air"]
+			},
+			{
+				"name": "GitHub Models",
+				"baseUrl": "https://models.github.ai/inference",
+				"apiKey": "your-github-pat",
+				"models": ["openai/gpt-4o-mini", "meta/llama-3.1-70b-instruct"]
+			},
+			{
+				"name": "Poe",
+				"baseUrl": "https://api.poe.com/v1",
+				"apiKey": "your-poe-api-key",
+				"models": ["Claude-Sonnet-4", "GPT-4o", "Gemini-2.5-Pro"]
+			},
+			{
+				"name": "Gemini",
+				"sdkProvider": "google",
+				"baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+				"apiKey": "your-gemini-api-key",
+				"models": ["gemini-3-flash-preview", "gemini-3-pro-preview"]
 			}
 		]
 	}
@@ -288,8 +461,11 @@ Nanocoder looks for configuration in the following order (first found wins):
 - **vLLM**: `"baseUrl": "http://localhost:8000/v1"`
 - **LocalAI**: `"baseUrl": "http://localhost:8080/v1"`
 - **OpenAI**: `"baseUrl": "https://api.openai.com/v1"`
+- **Poe**: `"baseUrl": "https://api.poe.com/v1"` (get API key from [poe.com/api_key](https://poe.com/api_key))
+- **GitHub Models**: `"baseUrl": "https://models.github.ai/inference"` (requires PAT with `models:read` scope)
 - **Z.ai**: `"baseUrl": "https://api.z.ai/api/paas/v4/"`
 - **Z.ai Coding**: `"baseUrl": "https://api.z.ai/api/coding/paas/v4/"`
+- **Google Gemini**: `"sdkProvider": "google"` (get API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
 
 **Provider Configuration:**
 
@@ -297,13 +473,20 @@ Nanocoder looks for configuration in the following order (first found wins):
 - `baseUrl`: OpenAI-compatible API endpoint
 - `apiKey`: API key (optional, may not be required)
 - `models`: Available model list for `/model` command
+- `disableToolModels`: List of model names to disable tool calling for (optional)
+- `sdkProvider`: AI SDK provider package to use (optional, defaults to `openai-compatible`)
+  - `openai-compatible`: Default, works with any OpenAI-compatible API
+  - `google`: Use `@ai-sdk/google` for native Google Gemini support (required for Gemini 3 models with tool calling)
 
 **Environment Variables:**
 
 Keep API keys out of version control using environment variables. Variables are loaded from shell environment (`.bashrc`, `.zshrc`) or `.env` file in your working directory.
 
+- `NANOCODER_CONFIG_DIR`: Override the global configuration directory.
+- `NANOCODER_DATA_DIR`: Override the application data directory used for internal data like usage statistics.
+
 **Syntax:** `$VAR_NAME`, `${VAR_NAME}`, or `${VAR_NAME:-default}`
-**Supported in:** `baseUrl`, `apiKey`, `models`, MCP server `command`, `args`, `env`
+**Supported in:** `baseUrl`, `apiKey`, `models`, `disableToolModels`, `MCP server`, `command`, `args`, `env`
 
 See `.env.example` for setup instructions
 
@@ -353,65 +536,83 @@ If you experience the model repeating tool calls or getting into loops (especial
 
 Tool-calling conversations require more context to track the history of tool calls and their results. If the context window is too small, the model may lose track of previous actions and repeat them indefinitely.
 
+### Logging Configuration
+
+Nanocoder now includes comprehensive structured logging with Pino, providing enterprise-grade logging capabilities including correlation tracking, performance monitoring, and security features.
+
+**Logging Configuration Options:**
+
+```bash
+# Environment Variables
+NANOCODER_LOG_LEVEL=debug          # Log level (trace, debug, info, warn, error, fatal)
+NANOCODER_LOG_TO_FILE=true         # Enable file logging
+NANOCODER_LOG_TO_CONSOLE=true      # Enable console logging
+NANOCODER_LOG_DIR=/var/log/nanocoder # Log directory
+NANOCODER_CORRELATION_ENABLED=true  # Enable correlation tracking
+```
+
+**Features:**
+- Structured JSON logging with metadata support
+- Correlation tracking across components
+- Automatic PII detection and redaction
+- Performance monitoring and metrics
+- Production-ready file rotation and compression
+
+**Default Log File Locations:**
+
+When `NANOCODER_LOG_TO_FILE=true` is set, logs are stored in platform-specific locations:
+
+- **macOS**: `~/Library/Preferences/nanocoder/logs`
+- **Linux/Unix**: `~/.config/nanocoder/logs/nanocoder/`
+- **Windows**: `%APPDATA%\nanocoder\logs\`
+
+You can override the default location using `NANOCODER_LOG_DIR` environment variable.
+
+For complete documentation, see [Pino Logging Guide](docs/pino-logging.md).
+
 ### MCP (Model Context Protocol) Servers
 
-Nanocoder supports connecting to MCP servers to extend its capabilities with additional tools. Configure MCP servers in your `agents.config.json`:
+Nanocoder supports MCP servers to extend its capabilities with additional tools. Configure servers using `.mcp.json` files at project or global level.
+
+**Quick Start:**
+
+1. Run `/setup-mcp` for an interactive wizard with templates
+2. Or create `.mcp.json` in your project root:
 
 ```json
 {
-	"nanocoder": {
-		"mcpServers": [
-			{
-				"name": "filesystem",
-				"command": "npx",
-				"args": [
-					"@modelcontextprotocol/server-filesystem",
-					"/path/to/allowed/directory"
-				]
-			},
-			{
-				"name": "github",
-				"command": "npx",
-				"args": ["@modelcontextprotocol/server-github"],
-				"env": {
-					"GITHUB_TOKEN": "your-github-token"
-				}
-			},
-			{
-				"name": "custom-server",
-				"command": "python",
-				"args": ["path/to/server.py"],
-				"env": {
-					"API_KEY": "your-api-key"
-				}
-			}
-		]
-	}
+  "mcpServers": {
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./src"],
+      "alwaysAllow": ["list_directory", "read_file"]
+    },
+    "github": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "$GITHUB_TOKEN" }
+    }
+  }
 }
 ```
 
-**MCP Server Configuration:**
+**Key Features:**
 
-- `name`: Display name for the MCP server
-- `command`: Executable command to start the server
-- `args`: Array of command-line arguments
-- `env`: Environment variables for the server process
+- **Transport types**: `stdio` (local), `http`, `websocket` (remote)
+- **Auto-approve tools**: Use `alwaysAllow` to skip confirmation for trusted tools
+- **Environment variables**: Use `$VAR` or `${VAR:-default}` syntax
+- **Hierarchical config**: Project-level (`.mcp.json`) overrides global (`~/.config/nanocoder/.mcp.json`)
 
-When MCP servers are configured, Nanocoder will:
+**Commands:**
 
-- Automatically connect to all configured servers on startup
-- Make all server tools available to the AI model
-- Show connected servers and their tools with the `/mcp` command
+- `/setup-mcp` - Interactive configuration wizard (supports `Ctrl+E` for manual editing)
+- `/mcp` - Show connected servers and their tools
 
-Popular MCP servers:
+Popular MCP servers: Filesystem, GitHub, Brave Search, Context7, DeepWiki, and [many more](https://github.com/modelcontextprotocol/servers).
 
-- **Filesystem**: Enhanced file operations
-- **GitHub**: Repository management
-- **Brave Search**: Web search capabilities
-- **Memory**: Persistent context storage
-- [View more MCP servers](https://github.com/modelcontextprotocol/servers)
-
-> **Note**: MCP server configuration follows the same location hierarchy as AI provider setup above. Use `/setup-config` for an interactive configuration wizard, or manually edit `agents.config.json` at the project level (current directory) or user level (platform-specific paths listed above).
+> **Full documentation**: See the [MCP Configuration Guide](docs/mcp-configuration.md) for detailed setup, examples, and troubleshooting.
 
 ### User Preferences
 
@@ -440,25 +641,146 @@ Preferences follow the same location hierarchy as configuration files:
 - View current preferences: The file is human-readable JSON
 - Reset preferences: Delete any `nanocoder-preferences.json` to start fresh
 
+### Application Data Directory
+
+Nanocoder stores internal application data (such as usage statistics) in a separate application data directory:
+
+- **macOS**: `~/Library/Application Support/nanocoder`
+- **Linux/Unix**: `$XDG_DATA_HOME/nanocoder` or `~/.local/share/nanocoder`
+- **Windows**: `%APPDATA%\nanocoder`
+
+You can override this directory using `NANOCODER_DATA_DIR`.
+
 ### Commands
 
 #### Built-in Commands
 
 - `/help` - Show available commands
-- `/init` - Initialize project with intelligent analysis, create AGENTS.md and configuration files
-- `/setup-config` - Interactive wizard for configuring AI providers and MCP servers with templates
+- `/init` - Initialize project with intelligent analysis, create AGENTS.md and configuration files. Use `/init --force` to regenerate AGENTS.md if it already exists.
+- `/setup-providers` - Interactive wizard for configuring AI providers with templates
+- `/setup-mcp` - Interactive wizard for configuring MCP servers with templates
 - `/clear` - Clear chat history
 - `/model` - Switch between available models
 - `/provider` - Switch between configured AI providers
 - `/status` - Display current status (CWD, provider, model, theme, available updates, AGENTS setup)
-- `/recommendations` - Get AI model recommendations based on your system capabilities (RAM, GPU, network)
+- `/model-database` - Browse coding models from OpenRouter (searchable, filterable by open/proprietary)
+- `/settings` - Interactive menu to access Nanocoder theme settings (theme, title-shape, nanocoder-shape) and commands
 - `/mcp` - Show connected MCP servers and their tools
 - `/custom-commands` - List all custom commands
+- `/checkpoint` - Save and restore conversation snapshots (see [Checkpointing](#checkpointing) section)
+- `/compact` - Compress message history to reduce context usage (see [Context Compression](docs/context-compression.md))
 - `/exit` - Exit the application
 - `/export` - Export current session to markdown file
-- `/theme` - Select a theme for the Nanocoder CLI
 - `/update` - Update Nanocoder to the latest version
+- `/usage` – Get current model context usage visually
+- `/lsp` – List connected LSP servers
+- `/explorer` - Interactive file browser to navigate, preview, and select files for context
 - `!command` - Execute bash commands directly without leaving Nanocoder (output becomes context for the LLM)
+- `@file` - Include file contents in messages automatically via fuzzy search as you type
+
+#### Checkpointing
+
+Nanocoder supports conversation checkpointing, allowing you to save snapshots of your coding sessions and restore them later. This is perfect for experimenting with different approaches or preserving important milestones.
+
+**Checkpoint Commands:**
+
+- `/checkpoint create [name]` - Create a checkpoint with optional custom name
+
+  - Auto-generates timestamp-based name if not provided
+  - Captures conversation history, modified files, and AI model configuration
+  - Example: `/checkpoint create feature-auth-v1`
+
+- `/checkpoint list` - List all available checkpoints
+
+  - Shows checkpoint name, creation time, message count, and files changed
+  - Sorted by creation date (newest first)
+
+- `/checkpoint load [name]` - Restore files from a checkpoint
+
+  - **Without name**: Shows interactive list to select checkpoint
+  - **With name**: Directly loads the specified checkpoint
+  - Prompts "Create backup before loading? (Y/n)" if current session has messages
+  - Press Y (or Enter) to auto-backup, N to skip, Esc to cancel
+  - Note: Conversation history restore requires restarting Nanocoder
+  - Example: `/checkpoint load` (interactive) or `/checkpoint load feature-auth-v1`
+
+- `/checkpoint delete <name>` - Delete a checkpoint permanently
+  - Removes checkpoint and all associated data
+  - Example: `/checkpoint delete old-checkpoint`
+
+**What gets saved:**
+
+- Complete conversation history
+- Modified files with their content (detected via git)
+- Active provider and model configuration
+- Timestamp and metadata
+
+**Storage location:**
+
+- Checkpoints are stored in `.nanocoder/checkpoints/` in your project directory
+- Each project has its own checkpoints
+- Consider adding `.nanocoder/checkpoints` to your `.gitignore`
+
+**Example workflow:**
+
+```bash
+# Create a checkpoint before trying a new approach
+/checkpoint create before-refactor
+
+# Make some experimental changes...
+# If things go wrong, restore the checkpoint
+/checkpoint load before-refactor
+
+# Or if things went well, create a new checkpoint
+/checkpoint create after-refactor
+
+# List all checkpoints to see your progress
+/checkpoint list
+```
+
+#### File Explorer
+
+The `/explorer` command opens an interactive file browser for navigating your project, previewing files with syntax highlighting, and selecting multiple files to add as context.
+
+**Navigation:**
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Navigate through files and directories |
+| Enter | Expand/collapse directory or preview file |
+| Space | Toggle file/directory selection |
+| / | Enter search mode (filters all files including nested) |
+| Backspace | Collapse current directory |
+| Esc | Exit explorer (selected files are added to input) |
+
+**Features:**
+
+- **Tree view**: Browse your project structure with expandable directories
+- **File preview**: View file contents with syntax highlighting before selecting
+- **Compressed indentation**: Preview displays content with compressed indentation (tabs/4-spaces become 2-spaces) for narrow terminals
+- **Multi-select**: Select multiple files to add as context at once
+- **Directory selection**: Press Space on a directory to select all files within it
+- **Search**: Press `/` to filter files by name across the entire tree
+- **Token estimation**: Shows estimated token count for selected files with warning for large selections (10k+ tokens)
+- **VS Code integration**: When running with `--vscode`, previewing a file also opens it in VS Code for full-featured viewing
+
+**Selection indicators:**
+
+- `✓` - File or directory fully selected
+- `◐` - Directory partially selected (some files within)
+- `✗` - File not selected (in preview mode)
+- `v` / `>` - Directory expanded / collapsed
+
+**Example workflow:**
+
+```bash
+# Open the file explorer
+/explorer
+
+# Navigate to src/components, expand it
+# Select multiple component files with Space
+# Press Esc to add them to your input as @file mentions
+```
 
 #### Custom Commands
 
@@ -532,12 +854,28 @@ Generate comprehensive unit tests for {{component}}. Include:
 - **Smart autocomplete**: Tab completion for commands with real-time suggestions
 - **Colorized output**: Syntax highlighting and structured display
 - **Session persistence**: Maintains context and preferences across sessions
+- **Real-time streaming**: Live token-by-token streaming of AI responses
 - **Real-time indicators**: Shows token usage, timing, and processing status
 - **First-time directory security disclaimer**: Prompts on first run and stores a per-project trust decision to prevent accidental exposure of local code or secrets.
 - **Development modes**: Three modes to control tool execution behavior (toggle with Shift+Tab)
-  - **Normal mode**: Standard tool confirmation flow - review each tool call before execution
-  - **Auto-accept mode**: Automatically accepts all tool calls without confirmation for faster workflows
+  - **Normal mode**: Standard tool confirmation flow - review potentially dangerous tool calls before execution
+  - **Auto-accept mode**: Automatically accepts more tool calls without confirmation for faster workflows
   - **Plan mode**: AI suggests actions but doesn't execute tools - useful for planning and exploration
+
+### Keyboard Shortcuts
+
+| Action | Shortcut | Notes |
+|--------|----------|-------|
+| Submit prompt | Enter | |
+| New line (multi-line input) | Ctrl+J | Most reliable across terminals |
+| New line (multi-line input) | Shift+Enter | Terminal-dependent |
+| New line (multi-line input) | Option/Alt+Enter | VS Code integrated terminal |
+| Toggle development mode | Shift+Tab | Cycles through normal/auto-accept/plan |
+| Cancel AI response | Esc | While AI is processing |
+| Clear input | Esc (twice) | Press Esc twice to clear current input |
+| History navigation | ↑/↓ | Navigate through prompt history |
+
+> **Note on multi-line input**: Terminal support for Shift+Enter / Option/Alt+Enter varies in terminals and operating systems. If one of these shortcuts doesn't work in your terminal, try and use Ctrl+J which sends a literal newline character and works more reliably across platforms and software.
 
 ### Developer Features
 
@@ -545,6 +883,18 @@ Generate comprehensive unit tests for {{component}}. Include:
 - **Extensible architecture**: Plugin-style system for adding new capabilities
 - **Project-specific config**: Different settings per project via `agents.config.json`
 - **Error resilience**: Graceful handling of provider failures and network issues
+
+## VS Code Extension
+
+Nanocoder includes a VS Code extension that provides live diff previews of file changes directly in your editor. When the AI suggests file modifications, you can see exactly what will change before approving.
+
+To get started, run Nanocoder with the `--vscode` flag:
+
+```bash
+nanocoder --vscode
+```
+
+For full documentation including installation options, configuration, and troubleshooting, see the [VS Code Extension Guide](docs/vscode-extension.md).
 
 ## Community
 
@@ -571,6 +921,5 @@ Nanocoder could benefit from help all across the board. Such as:
 - Reporting bugs or suggesting features
 - Marketing and getting the word out
 - Design and building more great software
-- Model cards for our recommendations database
 
 All contributions and community participation are welcome!

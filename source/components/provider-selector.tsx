@@ -1,10 +1,10 @@
-import {useState} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
+import {useState} from 'react';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
 import {appConfig} from '@/config/index';
-import {useTheme} from '@/hooks/useTheme';
 import {useTerminalWidth} from '@/hooks/useTerminalWidth';
+import {useTheme} from '@/hooks/useTheme';
 
 interface ProviderSelectorProps {
 	currentProvider: string;
@@ -56,11 +56,8 @@ export default function ProviderSelector({
 	};
 
 	return (
-		<TitledBox
-			key={colors.primary}
-			borderStyle="round"
-			titles={['Select a Provider']}
-			titleStyles={titleStyles.pill}
+		<TitledBoxWithPreferences
+			title="Select a Provider"
 			width={boxWidth}
 			borderColor={colors.primary}
 			paddingX={2}
@@ -73,6 +70,6 @@ export default function ProviderSelector({
 					<Text color={colors.secondary}>Press Escape to cancel</Text>
 				</Box>
 			</Box>
-		</TitledBox>
+		</TitledBoxWithPreferences>
 	);
 }

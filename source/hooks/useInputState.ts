@@ -1,21 +1,30 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {
+	PASTE_CHUNK_BASE_WINDOW_MS,
+	PASTE_CHUNK_MAX_WINDOW_MS,
+	PASTE_LARGE_CONTENT_THRESHOLD_CHARS,
+	PASTE_RAPID_DETECTION_MS,
+} from '@/constants';
 import {InputState, PlaceholderType} from '../types/hooks';
-import {handlePaste} from '../utils/paste-utils';
-import {PasteDetector} from '../utils/paste-detection';
 import {handleAtomicDeletion} from '../utils/atomic-deletion';
+import {PasteDetector} from '../utils/paste-detection';
+import {handlePaste} from '../utils/paste-utils';
+
+// Scales the paste window size based on content length.
+// Prevents truncation on slow terminals while keeping small pastes snappy
+function getDynamicPasteWindow(contentLength: number): number {
+	// Add ~1ms buffer per 10 chars, capped at max window
+	const dynamicExtension = Math.floor(contentLength / 10);
+	return Math.min(
+		PASTE_CHUNK_BASE_WINDOW_MS + dynamicExtension,
+		PASTE_CHUNK_MAX_WINDOW_MS,
+	);
+}
 
 // Helper functions
 function createEmptyInputState(): InputState {
 	return {
 		displayValue: '',
-		placeholderContent: {},
-	};
-}
-
-function _createInputStateFromString(text: string): InputState {
-	// Convert old string-based history to new InputState format
-	return {
-		displayValue: text,
 		placeholderContent: {},
 	};
 }
@@ -37,6 +46,10 @@ export function useInputState() {
 	// Paste detection
 	const pasteDetectorRef = useRef(new PasteDetector());
 	const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+	// Track recent paste for chunked paste handling (VS Code terminal issue)
+	const lastPasteTimeRef = useRef<number>(0);
+	const lastPasteIdRef = useRef<string | null>(null);
 
 	// Cached line count for performance
 	const [cachedLineCount, setCachedLineCount] = useState(1);
@@ -62,11 +75,129 @@ export function useInputState() {
 				return;
 			}
 
+			const now = Date.now();
+			const timeSinceLastPaste = now - lastPasteTimeRef.current;
+
+			// Check if this might be a continuation of a recent paste (chunked paste in VS Code)
+			const existingPlaceholder = lastPasteIdRef.current
+				? currentState.placeholderContent[lastPasteIdRef.current]
+				: null;
+			const dynamicWindow = existingPlaceholder
+				? getDynamicPasteWindow(existingPlaceholder.content.length)
+				: PASTE_CHUNK_BASE_WINDOW_MS;
+
+			if (
+				lastPasteIdRef.current &&
+				timeSinceLastPaste < dynamicWindow &&
+				existingPlaceholder
+			) {
+				// This looks like a chunked paste continuation
+				// Extract the new text that was added (should be at the end)
+				const placeholder =
+					currentState.placeholderContent[lastPasteIdRef.current];
+				const expectedLength = currentState.displayValue.length;
+				const addedChunk = newInput.slice(expectedLength);
+
+				if (
+					addedChunk.length > 0 &&
+					placeholder.type === PlaceholderType.PASTE
+				) {
+					// Merge the new chunk into the existing paste placeholder
+					const updatedContent = placeholder.content + addedChunk;
+					const oldPlaceholder = placeholder.displayText;
+					const newPlaceholder = `[Paste #${lastPasteIdRef.current}: ${updatedContent.length} chars]`;
+
+					const updatedPlaceholderContent = {
+						...currentState.placeholderContent,
+						[lastPasteIdRef.current]: {
+							...placeholder,
+							content: updatedContent,
+							originalSize: updatedContent.length,
+							displayText: newPlaceholder,
+						},
+					};
+
+					// Replace old placeholder with updated one in display value
+					const newDisplayValue = currentState.displayValue.replace(
+						oldPlaceholder,
+						newPlaceholder,
+					);
+
+					pushToUndoStack({
+						displayValue: newDisplayValue,
+						placeholderContent: updatedPlaceholderContent,
+					});
+
+					// Update paste detector to the new display value
+					pasteDetectorRef.current.updateState(newDisplayValue);
+					lastPasteTimeRef.current = now; // Extend the window
+					return;
+				}
+			}
+
 			// Then detect if this might be a paste
 			const detection = pasteDetectorRef.current.detectPaste(newInput);
 
 			if (detection.isPaste && detection.addedText.length > 0) {
-				// Try to handle as paste
+				// If we have an active paste within a short window (even if state hasn't fully updated),
+				// treat this as a continuation to prevent duplicate placeholders
+				const isVeryRecentPaste = timeSinceLastPaste < PASTE_RAPID_DETECTION_MS;
+
+				const activePasteId = lastPasteIdRef.current;
+				const activePlaceholder = activePasteId
+					? currentState.placeholderContent[activePasteId]
+					: null;
+				const activeWindow = activePlaceholder
+					? getDynamicPasteWindow(activePlaceholder.content.length)
+					: PASTE_CHUNK_BASE_WINDOW_MS;
+
+				if (
+					activePasteId &&
+					(isVeryRecentPaste ||
+						(timeSinceLastPaste < activeWindow && activePlaceholder))
+				) {
+					// If we don't have the placeholder in state yet, just update detector and skip
+					// This happens when multiple detections fire before React updates state
+					const placeholder = currentState.placeholderContent[activePasteId];
+					if (!placeholder) {
+						// Skip duplicate early detection
+						pasteDetectorRef.current.updateState(newInput);
+						return;
+					}
+
+					// Treat as chunked continuation
+					if (placeholder.type === PlaceholderType.PASTE) {
+						const updatedContent = placeholder.content + detection.addedText;
+						const oldPlaceholder = placeholder.displayText;
+						const newPlaceholder = `[Paste #${activePasteId}: ${updatedContent.length} chars]`;
+
+						const updatedPlaceholderContent = {
+							...currentState.placeholderContent,
+							[activePasteId]: {
+								...placeholder,
+								content: updatedContent,
+								originalSize: updatedContent.length,
+								displayText: newPlaceholder,
+							},
+						};
+
+						const newDisplayValue = currentState.displayValue.replace(
+							oldPlaceholder,
+							newPlaceholder,
+						);
+
+						pushToUndoStack({
+							displayValue: newDisplayValue,
+							placeholderContent: updatedPlaceholderContent,
+						});
+
+						pasteDetectorRef.current.updateState(newDisplayValue);
+						lastPasteTimeRef.current = now;
+						return;
+					}
+				}
+
+				// Try to handle as paste (new paste)
 				const pasteResult = handlePaste(
 					detection.addedText,
 					currentState.displayValue,
@@ -77,6 +208,20 @@ export function useInputState() {
 				if (pasteResult) {
 					// Large paste detected - create placeholder
 					pushToUndoStack(pasteResult);
+					// Update paste detector state to match the new display value (with placeholder)
+					// This prevents detection confusion on subsequent pastes
+					pasteDetectorRef.current.updateState(pasteResult.displayValue);
+
+					// Track this paste for potential chunked continuation
+					const pasteId = Object.keys(pasteResult.placeholderContent).find(
+						id =>
+							!currentState.placeholderContent[id] &&
+							pasteResult.placeholderContent[id].type === PlaceholderType.PASTE,
+					);
+					if (pasteId) {
+						lastPasteIdRef.current = pasteId;
+						lastPasteTimeRef.current = now;
+					}
 				} else {
 					// Small paste - treat as normal input
 					pushToUndoStack({
@@ -105,7 +250,9 @@ export function useInputState() {
 			}
 
 			debounceTimerRef.current = setTimeout(() => {
-				setHasLargeContent(newInput.length > 150);
+				setHasLargeContent(
+					newInput.length > PASTE_LARGE_CONTENT_THRESHOLD_CHARS,
+				);
 			}, 50);
 		},
 		[currentState, pushToUndoStack],
@@ -144,7 +291,13 @@ export function useInputState() {
 	// Delete placeholder atomically
 	const deletePlaceholder = useCallback(
 		(placeholderId: string) => {
-			const placeholderPattern = `[Paste #${placeholderId}: \\d+ chars]`;
+			// Sanitize placeholderId to ensure it only contains safe characters
+			const sanitizedPlaceholderId = placeholderId.replace(
+				/[^a-zA-Z0-9_-]/g,
+				'',
+			);
+			const placeholderPattern = `[Paste #${sanitizedPlaceholderId}: \\d+ chars]`;
+			/* nosemgrep */
 			const regex = new RegExp(
 				placeholderPattern.replace(/[[\]]/g, '\\$&'),
 				'g',
@@ -177,6 +330,8 @@ export function useInputState() {
 		setHistoryIndex(-1);
 		setCachedLineCount(1);
 		pasteDetectorRef.current.reset();
+		lastPasteTimeRef.current = 0;
+		lastPasteIdRef.current = null;
 	}, []);
 
 	// Cleanup on unmount

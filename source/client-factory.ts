@@ -1,9 +1,11 @@
-import {LangGraphClient} from '@/langgraph-client';
-import {appConfig, getClosestConfigFile} from '@/config/index';
-import {loadPreferences} from '@/config/preferences';
-import type {LLMClient, LangChainProviderConfig} from '@/types/index';
 import {existsSync} from 'fs';
 import {join} from 'path';
+import {AISDKClient} from '@/ai-sdk-client';
+import {getClosestConfigFile} from '@/config/index';
+import {loadAllProviderConfigs} from '@/config/mcp-config-loader';
+import {loadPreferences} from '@/config/preferences';
+import {TIMEOUT_PROVIDER_CONNECTION_MS} from '@/constants';
+import type {AIProviderConfig, LLMClient} from '@/types/index';
 
 // Custom error class for configuration errors that need special UI handling
 export class ConfigurationError extends Error {
@@ -25,11 +27,11 @@ export async function createLLMClient(
 	const agentsJsonPath = getClosestConfigFile('agents.config.json');
 	const hasConfigFile = existsSync(agentsJsonPath);
 
-	// Always use LangGraph - it handles both tool-calling and non-tool-calling models
-	return createLangGraphClient(provider, hasConfigFile);
+	// Use AI SDK - it handles both tool-calling and non-tool-calling models
+	return createAISDKClient(provider, hasConfigFile);
 }
 
-async function createLangGraphClient(
+async function createAISDKClient(
 	requestedProvider?: string,
 	hasConfigFile = true,
 ): Promise<{client: LLMClient; actualProvider: string}> {
@@ -88,7 +90,7 @@ async function createLangGraphClient(
 			// Test provider connection
 			await testProviderConnection(providerConfig);
 
-			const client = await LangGraphClient.create(providerConfig);
+			const client = await AISDKClient.create(providerConfig);
 
 			return {client, actualProvider: providerType};
 		} catch (error: unknown) {
@@ -114,32 +116,32 @@ async function createLangGraphClient(
 	}
 }
 
-function loadProviderConfigs(): LangChainProviderConfig[] {
-	const providers: LangChainProviderConfig[] = [];
+function loadProviderConfigs(): AIProviderConfig[] {
+	// Use the new hierarchical provider loading system to get providers from all levels
+	const allProviderConfigs = loadAllProviderConfigs();
 
-	// Load providers from the new providers array structure
-	if (appConfig.providers) {
-		for (const provider of appConfig.providers) {
-			providers.push({
-				name: provider.name,
-				type: 'openai',
-				models: provider.models || [],
-				requestTimeout: provider.requestTimeout,
-				socketTimeout: provider.socketTimeout,
-				connectionPool: provider.connectionPool,
-				config: {
-					baseURL: provider.baseUrl,
-					apiKey: provider.apiKey || 'dummy-key',
-				},
-			});
-		}
-	}
-
-	return providers;
+	return allProviderConfigs.map(provider => ({
+		name: provider.name,
+		type: 'openai' as const,
+		models: provider.models || [],
+		requestTimeout: provider.requestTimeout,
+		socketTimeout: provider.socketTimeout,
+		connectionPool: provider.connectionPool,
+		// Tool configuration
+		disableTools: provider.disableTools,
+		disableToolModels: provider.disableToolModels,
+		// SDK provider package to use
+		sdkProvider: provider.sdkProvider,
+		config: {
+			baseURL: provider.baseUrl,
+			apiKey: provider.apiKey || 'dummy-key',
+			headers: provider.headers ?? {},
+		},
+	}));
 }
 
 async function testProviderConnection(
-	providerConfig: LangChainProviderConfig,
+	providerConfig: AIProviderConfig,
 ): Promise<void> {
 	// Test local servers for connectivity
 	if (
@@ -148,7 +150,8 @@ async function testProviderConnection(
 	) {
 		try {
 			await fetch(providerConfig.config.baseURL, {
-				signal: AbortSignal.timeout(5000),
+				signal: AbortSignal.timeout(TIMEOUT_PROVIDER_CONNECTION_MS),
+				headers: providerConfig.config.headers,
 			});
 			// Don't check response.ok as some servers return 404 for root path
 			// We just need to confirm the server responded (not a network error)

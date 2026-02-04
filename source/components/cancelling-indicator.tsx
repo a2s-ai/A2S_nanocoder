@@ -1,6 +1,6 @@
-import {memo} from 'react';
 import {Box, Text} from 'ink';
 import Spinner from 'ink-spinner';
+import {memo} from 'react';
 import {useTheme} from '@/hooks/useTheme';
 
 export default memo(function CancellingIndicator() {
@@ -8,7 +8,7 @@ export default memo(function CancellingIndicator() {
 	return (
 		<Box flexDirection="column" marginBottom={1}>
 			<Box>
-				<Spinner type="dots2" />
+				<Spinner type="dots" />
 				<Text color={colors.secondary}> Cancelling...</Text>
 			</Box>
 		</Box>

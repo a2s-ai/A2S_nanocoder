@@ -1,22 +1,32 @@
-import {useState, useEffect} from 'react';
+import {useEffect, useState} from 'react';
+import {DEFAULT_TERMINAL_COLUMNS} from '@/constants';
 
 type TerminalSize = 'narrow' | 'normal' | 'wide';
 
-export const useTerminalWidth = () => {
-	// Calculate box width (leave some padding and ensure minimum width)
-	const calculateBoxWidth = (columns: number) =>
-		Math.max(Math.min(columns - 4, 120), 40);
+// Calculate box width (leave some padding and ensure minimum width)
+const calculateBoxWidth = (columns: number) =>
+	Math.max(Math.min(columns - 4, 120), 40);
 
+export const useTerminalWidth = () => {
 	const [boxWidth, setBoxWidth] = useState(() =>
-		calculateBoxWidth(process.stdout.columns || 80),
+		calculateBoxWidth(process.stdout.columns || DEFAULT_TERMINAL_COLUMNS),
 	);
 
 	useEffect(() => {
 		const handleResize = () => {
-			const newWidth = calculateBoxWidth(process.stdout.columns || 80);
+			const newWidth = calculateBoxWidth(
+				process.stdout.columns || DEFAULT_TERMINAL_COLUMNS,
+			);
 			// Only update if width actually changed
 			setBoxWidth(prevWidth => (prevWidth !== newWidth ? newWidth : prevWidth));
 		};
+
+		// Increase max listeners if needed (many components use this hook simultaneously)
+		const currentMax = process.stdout.getMaxListeners();
+		if (currentMax !== 0 && currentMax < 50) {
+			// 0 means unlimited, otherwise ensure we have enough headroom
+			process.stdout.setMaxListeners(50);
+		}
 
 		// Listen for terminal resize events
 		process.stdout.on('resize', handleResize);
@@ -35,7 +45,7 @@ export const useTerminalWidth = () => {
  */
 export const useResponsiveTerminal = () => {
 	const boxWidth = useTerminalWidth();
-	const actualWidth = process.stdout.columns || 80;
+	const actualWidth = process.stdout.columns || DEFAULT_TERMINAL_COLUMNS;
 
 	// Define breakpoints for terminal sizes
 	const getSize = (width: number): TerminalSize => {
@@ -53,8 +63,11 @@ export const useResponsiveTerminal = () => {
 	};
 
 	// Utility to truncate path intelligently (keep end of path)
-	const truncatePath = (pathStr: string, maxLength: number): string => {
-		if (pathStr.length <= maxLength) return pathStr;
+	const truncatePath = (
+		pathStr: string | undefined,
+		maxLength: number,
+	): string => {
+		if (!pathStr || pathStr.length <= maxLength) return pathStr || '';
 		return '...' + pathStr.slice(-(maxLength - 3));
 	};
 

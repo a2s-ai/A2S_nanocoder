@@ -1,8 +1,8 @@
-import {Command, Message} from '@/types/index';
-import React from 'react';
-import SuccessMessage from '@/components/success-message';
 import fs from 'fs/promises';
 import path from 'path';
+import React from 'react';
+import {SuccessMessage} from '@/components/message-box';
+import {Command, Message} from '@/types/index';
 
 const formatMessageContent = (message: Message) => {
 	let content = '';
@@ -54,7 +54,7 @@ export const exportCommand: Command = {
 		const filename =
 			args[0] ||
 			`nanocoder-chat-${new Date().toISOString().replace(/:/g, '-')}.md`;
-		const filepath = path.resolve(process.cwd(), filename);
+		const filepath = path.resolve(process.cwd(), filename); // nosemgrep
 
 		const frontmatter = `---
 session_date: ${new Date().toISOString()}

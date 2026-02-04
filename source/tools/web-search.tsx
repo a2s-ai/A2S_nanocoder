@@ -1,10 +1,17 @@
-import {fetch} from 'undici';
 import * as cheerio from 'cheerio';
+import {Box, Text} from 'ink';
 import React from 'react';
-import {Text, Box} from 'ink';
-import type {ToolHandler, ToolDefinition} from '@/types/index';
-import {ThemeContext} from '@/hooks/useTheme';
-import ToolMessage from '@/components/tool-message';
+import {fetch} from 'undici';
+
+import {
+	DEFAULT_WEB_SEARCH_RESULTS,
+	MAX_WEB_SEARCH_QUERY_LENGTH,
+	TIMEOUT_WEB_SEARCH_MS,
+} from '@/constants';
+import {useTheme} from '@/hooks/useTheme';
+import type {NanocoderToolExport} from '@/types/core';
+import {jsonSchema, tool} from '@/types/core';
+import {calculateTokens} from '@/utils/token-calculator';
 
 interface SearchArgs {
 	query: string;
@@ -17,8 +24,8 @@ interface SearchResult {
 	snippet: string;
 }
 
-const handler: ToolHandler = async (args: SearchArgs): Promise<string> => {
-	const maxResults = args.max_results ?? 10;
+const executeWebSearch = async (args: SearchArgs): Promise<string> => {
+	const maxResults = args.max_results ?? DEFAULT_WEB_SEARCH_RESULTS;
 	const encodedQuery = encodeURIComponent(args.query);
 
 	try {
@@ -31,7 +38,7 @@ const handler: ToolHandler = async (args: SearchArgs): Promise<string> => {
 					'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
 				Accept: 'text/html',
 			},
-			signal: AbortSignal.timeout(10000),
+			signal: AbortSignal.timeout(TIMEOUT_WEB_SEARCH_MS),
 		});
 
 		if (!response.ok) {
@@ -95,67 +102,96 @@ const handler: ToolHandler = async (args: SearchArgs): Promise<string> => {
 	}
 };
 
-// Create a component that will re-render when theme changes
-const WebSearchFormatter = React.memo(
-	({args, result}: {args: SearchArgs; result?: string}) => {
-		const themeContext = React.useContext(ThemeContext);
-		if (!themeContext) {
-			throw new Error('ThemeContext not found');
-		}
-		const {colors} = themeContext;
-		const query = args.query || 'unknown';
-		const maxResults = args.max_results ?? 5;
-
-		// Parse result to count actual results
-		let resultCount = 0;
-		let estimatedTokens = 0;
-		if (result) {
-			const matches = result.match(/^## \d+\./gm);
-			resultCount = matches ? matches.length : 0;
-			estimatedTokens = Math.ceil(result.length / 4);
-		}
-
-		const messageContent = (
-			<Box flexDirection="column">
-				<Text color={colors.tool}>⚒ web_search</Text>
-
-				<Box>
-					<Text color={colors.secondary}>Query: </Text>
-					<Text color={colors.white}>{query}</Text>
-				</Box>
-
-				<Box>
-					<Text color={colors.secondary}>Engine: </Text>
-					<Text color={colors.white}>Brave Search</Text>
-				</Box>
-
-				{result && (
-					<>
-						<Box>
-							<Text color={colors.secondary}>Results: </Text>
-							<Text color={colors.white}>
-								{resultCount} / {maxResults} results
-							</Text>
-						</Box>
-
-						<Box>
-							<Text color={colors.secondary}>Output: </Text>
-							<Text color={colors.white}>~{estimatedTokens} tokens</Text>
-						</Box>
-					</>
-				)}
-			</Box>
-		);
-
-		return <ToolMessage message={messageContent} hideBox={true} />;
+const webSearchCoreTool = tool({
+	description:
+		'Search the web for information (scrapes Brave Search, returns markdown)',
+	inputSchema: jsonSchema<SearchArgs>({
+		type: 'object',
+		properties: {
+			query: {
+				type: 'string',
+				description: 'The search query.',
+			},
+			max_results: {
+				type: 'number',
+				description:
+					'Maximum number of search results to return (default: 10).',
+			},
+		},
+		required: ['query'],
+	}),
+	// Low risk: read-only operation, never requires approval
+	needsApproval: false,
+	execute: async (args, _options) => {
+		return await executeWebSearch(args);
 	},
-);
+});
 
-const formatter = (args: SearchArgs, result?: string): React.ReactElement => {
-	return <WebSearchFormatter args={args} result={result} />;
+function WebSearchFormatterComponent({
+	query,
+	maxResults,
+	result,
+}: {
+	query: string;
+	maxResults: number;
+	result?: string;
+}): React.ReactElement {
+	const {colors} = useTheme();
+
+	// Parse result to count actual results
+	let resultCount = 0;
+	let estimatedTokens = 0;
+	if (result) {
+		const matches = result.match(/^## \d+\./gm);
+		resultCount = matches ? matches.length : 0;
+		estimatedTokens = calculateTokens(result);
+	}
+
+	return (
+		<Box flexDirection="column" marginBottom={1}>
+			<Text color={colors.tool}>⚒ web_search</Text>
+			<Box>
+				<Text color={colors.secondary}>Query: </Text>
+				<Box marginLeft={1}>
+					<Text color={colors.text}>{query}</Text>
+				</Box>
+			</Box>
+			<Box>
+				<Text color={colors.secondary}>Engine: </Text>
+				<Text color={colors.text}>Brave Search</Text>
+			</Box>
+			{result && (
+				<>
+					<Box>
+						<Text color={colors.secondary}>Results: </Text>
+						<Text color={colors.text}>
+							{resultCount} / {maxResults} results
+						</Text>
+					</Box>
+					<Box>
+						<Text color={colors.secondary}>Tokens: </Text>
+						<Text color={colors.text}>~{estimatedTokens} tokens</Text>
+					</Box>
+				</>
+			)}
+		</Box>
+	);
+}
+
+const webSearchFormatter = (
+	args: SearchArgs,
+	result?: string,
+): React.ReactElement => {
+	return (
+		<WebSearchFormatterComponent
+			query={args.query || 'unknown'}
+			maxResults={args.max_results ?? DEFAULT_WEB_SEARCH_RESULTS}
+			result={result}
+		/>
+	);
 };
 
-const validator = (
+const webSearchValidator = (
 	args: SearchArgs,
 ): Promise<{valid: true} | {valid: false; error: string}> => {
 	const query = args.query?.trim();
@@ -169,42 +205,19 @@ const validator = (
 	}
 
 	// Check query length (reasonable limit)
-	if (query.length > 500) {
+	if (query.length > MAX_WEB_SEARCH_QUERY_LENGTH) {
 		return Promise.resolve({
 			valid: false,
-			error: `⚒ Search query is too long (${query.length} characters). Maximum length is 500 characters.`,
+			error: `⚒ Search query is too long (${query.length} characters). Maximum length is ${MAX_WEB_SEARCH_QUERY_LENGTH} characters.`,
 		});
 	}
 
 	return Promise.resolve({valid: true});
 };
 
-export const webSearchTool: ToolDefinition = {
-	handler,
-	formatter,
-	validator,
-	requiresConfirmation: false,
-	config: {
-		type: 'function',
-		function: {
-			name: 'web_search',
-			description:
-				'Search the web using Brave Search and return relevant results with URLs, titles, and descriptions. Use this to find up-to-date information, documentation, or answers to questions that require. Use in conjuction with the `fetch_url` tool to get page information on search results.',
-			parameters: {
-				type: 'object',
-				properties: {
-					query: {
-						type: 'string',
-						description: 'The search query to look up on the web.',
-					},
-					max_results: {
-						type: 'number',
-						description:
-							'Maximum number of results to return (default: 10, max: 20).',
-					},
-				},
-				required: ['query'],
-			},
-		},
-	},
+export const webSearchTool: NanocoderToolExport = {
+	name: 'web_search' as const,
+	tool: webSearchCoreTool,
+	formatter: webSearchFormatter,
+	validator: webSearchValidator,
 };

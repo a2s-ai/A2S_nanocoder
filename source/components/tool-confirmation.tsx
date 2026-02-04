@@ -1,15 +1,14 @@
-import React from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {
-	TitledBox as _TitledBox,
-	titleStyles as _titleStyles,
-} from '@mishieck/ink-titled-box';
-import {useTheme} from '@/hooks/useTheme';
-import type {ToolCall} from '@/types/core';
-import {toolFormatters} from '@/tools/index';
+import React from 'react';
 import {useTerminalWidth} from '@/hooks/useTerminalWidth';
+import {useTheme} from '@/hooks/useTheme';
 import {getToolManager} from '@/message-handler';
+import {toolFormatters} from '@/tools/index';
+import type {ToolCall} from '@/types/core';
+import {formatError} from '@/utils/error-formatter';
+import {getLogger} from '@/utils/logging';
+import {parseToolArguments} from '@/utils/tool-args-parser';
 
 interface ToolConfirmationProps {
 	toolCall: ToolCall;
@@ -54,14 +53,7 @@ export default function ToolConfirmation({
 				if (validator) {
 					try {
 						// Parse arguments if they're a JSON string
-						let parsedArgs: unknown = toolCall.function.arguments;
-						if (typeof parsedArgs === 'string') {
-							try {
-								parsedArgs = JSON.parse(parsedArgs) as Record<string, unknown>;
-							} catch {
-								// If parsing fails, use as-is
-							}
-						}
+						const parsedArgs = parseToolArguments(toolCall.function.arguments);
 
 						const validationResult = await validator(parsedArgs);
 						if (!validationResult.valid) {
@@ -73,10 +65,12 @@ export default function ToolConfirmation({
 							return;
 						}
 					} catch (error) {
-						console.error('Error running validator:', error);
-						const errorMsg = `Validation error: ${
-							error instanceof Error ? error.message : String(error)
-						}`;
+						const logger = getLogger();
+						logger.error(
+							{error: formatError(error)},
+							'Error running validator',
+						);
+						const errorMsg = `Validation error: ${formatError(error)}`;
 						setValidationError(errorMsg);
 						setHasValidationError(true);
 						setFormatterPreview(<Text color={colors.error}>{errorMsg}</Text>);
@@ -90,18 +84,15 @@ export default function ToolConfirmation({
 				setIsLoadingPreview(true);
 				try {
 					// Parse arguments if they're a JSON string
-					let parsedArgs: unknown = toolCall.function.arguments;
-					if (typeof parsedArgs === 'string') {
-						try {
-							parsedArgs = JSON.parse(parsedArgs) as Record<string, unknown>;
-						} catch {
-							// If parsing fails, use as-is
-						}
-					}
+					const parsedArgs = parseToolArguments(toolCall.function.arguments);
 					const preview = await formatter(parsedArgs);
 					setFormatterPreview(preview);
 				} catch (error) {
-					console.error('Error loading formatter preview:', error);
+					const logger = getLogger();
+					logger.error(
+						{error: formatError(error)},
+						'Error loading formatter preview',
+					);
 					setHasFormatterError(true);
 					setFormatterPreview(
 						<Text color={colors.error}>Error: {String(error)}</Text>,
@@ -116,7 +107,7 @@ export default function ToolConfirmation({
 	}, [toolCall, toolManager, colors.error]);
 
 	// Handle escape key to cancel
-	useInput((inputChar, key) => {
+	useInput((_inputChar, key) => {
 		if (key.escape) {
 			onCancel();
 		}
@@ -155,7 +146,7 @@ export default function ToolConfirmation({
 							{React.isValidElement(formatterPreview) ? (
 								formatterPreview
 							) : (
-								<Text color={colors.white}>{String(formatterPreview)}</Text>
+								<Text color={colors.text}>{String(formatterPreview)}</Text>
 							)}
 						</Box>
 					</Box>
@@ -172,7 +163,7 @@ export default function ToolConfirmation({
 											mcpInfo.isMCPTool
 												? `MCP tool "${toolCall.function.name}" from server "${mcpInfo.serverName}"`
 												: `tool "${toolCall.function.name}"`
-									  }?`}
+										}?`}
 							</Text>
 						</Box>
 

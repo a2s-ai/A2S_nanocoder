@@ -1,23 +1,55 @@
-/**
- * Determine the correct path for local app configuration
- * Handles platform-specific config paths (macOS, Linux, Windows)
- */
+import {homedir} from 'os';
+import {join} from 'path';
+
 export function getAppDataPath(): string {
-	// 'win32' will set this correctly via the environment.
-	// The config path can be set via the `APPDATA` environment variable.
-	let appDataPath =
-		process.env.APPDATA ||
-		// We try to use `process.env.$XDG_CONFIG_HOME`, but cant count on it.
-		process.env.XDG_CONFIG_HOME ||
-		// For darwin, we set the correct app path.
-		(process.platform === 'darwin'
-			? `${process.env.HOME}/Library/Preferences`
-			: // For all other unix-like systems, we use the $HOME/.config
-			  `${process.env.HOME}/.config`);
+	// Allow explicit override via environment variable
+	if (process.env.NANOCODER_DATA_DIR) {
+		return process.env.NANOCODER_DATA_DIR;
+	}
 
-	// There doesn't seem to be a place to pull an "app name"
-	const appName = 'nanocoder';
-	appDataPath += `/${appName}`;
+	// Check XDG_DATA_HOME first (works cross-platform for testing)
+	if (process.env.XDG_DATA_HOME) {
+		return join(process.env.XDG_DATA_HOME, 'nanocoder');
+	}
 
-	return appDataPath;
+	// Platform-specific app data directories
+	let baseAppDataPath: string;
+	switch (process.platform) {
+		case 'win32': {
+			baseAppDataPath =
+				process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+			break;
+		}
+		case 'darwin': {
+			baseAppDataPath = join(homedir(), 'Library', 'Application Support');
+			break;
+		}
+		default: {
+			baseAppDataPath = join(homedir(), '.local', 'share');
+		}
+	}
+	return join(baseAppDataPath, 'nanocoder');
+}
+
+export function getConfigPath(): string {
+	// Allow explicit override via environment variable
+	if (process.env.NANOCODER_CONFIG_DIR) {
+		return process.env.NANOCODER_CONFIG_DIR;
+	}
+
+	// Platform-specific defaults
+	let baseConfigPath: string;
+	switch (process.platform) {
+		case 'win32':
+			baseConfigPath =
+				process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+			break;
+		case 'darwin':
+			baseConfigPath = join(homedir(), 'Library', 'Preferences');
+			break;
+		default:
+			baseConfigPath =
+				process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config');
+	}
+	return join(baseConfigPath, 'nanocoder');
 }

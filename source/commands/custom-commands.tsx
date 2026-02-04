@@ -1,9 +1,9 @@
-import type {Command, CustomCommand} from '@/types/index';
-import {CustomCommandLoader} from '@/custom-commands/loader';
+import {Box, Text} from 'ink';
 import React from 'react';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
-import {Text, Box} from 'ink';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
+import {CustomCommandLoader} from '@/custom-commands/loader';
 import {useTheme} from '@/hooks/useTheme';
+import type {Command, CustomCommand} from '@/types/index';
 
 interface CustomCommandsProps {
 	commands: CustomCommand[];
@@ -38,11 +38,8 @@ function CustomCommands({commands}: CustomCommandsProps) {
 	);
 
 	return (
-		<TitledBox
-			key={colors.primary}
-			borderStyle="round"
-			titles={['Custom Commands']}
-			titleStyles={titleStyles.pill}
+		<TitledBoxWithPreferences
+			title="Custom Commands"
 			width={75}
 			borderColor={colors.primary}
 			paddingX={2}
@@ -53,12 +50,12 @@ function CustomCommands({commands}: CustomCommandsProps) {
 			{commands.length === 0 ? (
 				<>
 					<Box marginBottom={1}>
-						<Text color={colors.white} bold>
+						<Text color={colors.text} bold>
 							No custom commands found
 						</Text>
 					</Box>
 
-					<Text color={colors.white}>To create custom commands:</Text>
+					<Text color={colors.text}>To create custom commands:</Text>
 
 					<Text color={colors.secondary}>
 						1. Create a <Text color={colors.primary}>.nanocoder/commands</Text>{' '}
@@ -88,20 +85,20 @@ function CustomCommands({commands}: CustomCommandsProps) {
 			) : (
 				<>
 					<Box marginBottom={1}>
-						<Text color={colors.white}>
+						<Text color={colors.text}>
 							Found {commands.length} custom command
 							{commands.length !== 1 ? 's' : ''}:
 						</Text>
 					</Box>
 
 					{sortedCommands.map((cmd, index) => (
-						<Text key={index} color={colors.white}>
+						<Text key={index} color={colors.text}>
 							• {formatCommand(cmd)}
 						</Text>
 					))}
 				</>
 			)}
-		</TitledBox>
+		</TitledBoxWithPreferences>
 	);
 }
 

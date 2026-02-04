@@ -1,5 +1,7 @@
-import {readFileSync, readdirSync, statSync, existsSync} from 'fs';
-import {join, relative, basename} from 'path';
+import {readdirSync, statSync} from 'fs';
+import {basename, join, relative} from 'path';
+import {MAX_DIRECTORY_DEPTH, MAX_FILES_TO_SCAN} from '@/constants';
+import {loadGitignore} from '@/utils/gitignore-loader';
 
 interface ScanResult {
 	files: string[];
@@ -9,40 +11,12 @@ interface ScanResult {
 }
 
 export class FileScanner {
-	private gitignorePatterns: string[] = [];
-	private maxFiles = 1000; // Prevent scanning massive codebases
-	private maxDepth = 10; // Prevent infinite recursion
+	private ignoreInstance: ReturnType<typeof loadGitignore>;
+	private maxFiles = MAX_FILES_TO_SCAN; // Prevent scanning massive codebases
+	private maxDepth = MAX_DIRECTORY_DEPTH; // Prevent infinite recursion
 
 	constructor(private rootPath: string) {
-		this.loadGitignore();
-	}
-
-	/**
-	 * Load and parse .gitignore patterns
-	 */
-	private loadGitignore(): void {
-		const gitignorePath = join(this.rootPath, '.gitignore');
-
-		if (!existsSync(gitignorePath)) {
-			return;
-		}
-
-		try {
-			const content = readFileSync(gitignorePath, 'utf-8');
-			this.gitignorePatterns = content
-				.split('\n')
-				.map(line => line.trim())
-				.filter(line => line && !line.startsWith('#'))
-				.map(pattern => {
-					// Convert gitignore patterns to simple regex patterns
-					return pattern
-						.replace(/\*/g, '.*') // * -> .*
-						.replace(/\?/g, '.') // ? -> .
-						.replace(/\/$/, ''); // Remove trailing slash
-				});
-		} catch {
-			// Ignore gitignore parsing errors
-		}
+		this.ignoreInstance = loadGitignore(rootPath);
 	}
 
 	/**
@@ -50,37 +24,11 @@ export class FileScanner {
 	 */
 	private shouldIgnore(filePath: string): boolean {
 		const relativePath = relative(this.rootPath, filePath);
-		const fileName = basename(filePath);
-
-		// Always ignore these directories
-		const alwaysIgnore = [
-			'node_modules',
-			'.git',
-			'.svn',
-			'.hg',
-			'dist',
-			'build',
-			'.next',
-			'.nuxt',
-			'__pycache__',
-			'.pytest_cache',
-			'target',
-			'coverage',
-		];
-
-		if (
-			alwaysIgnore.some(
-				ignored => relativePath.includes(ignored) || fileName === ignored,
-			)
-		) {
-			return true;
+		// ignore library requires non-empty paths
+		if (!relativePath || relativePath === '.') {
+			return false;
 		}
-
-		// Check gitignore patterns
-		return this.gitignorePatterns.some(pattern => {
-			const regex = new RegExp(`^${pattern}$`);
-			return regex.test(relativePath) || regex.test(fileName);
-		});
+		return this.ignoreInstance.ignores(relativePath);
 	}
 
 	/**
@@ -122,7 +70,8 @@ export class FileScanner {
 					break;
 				}
 
-				const fullPath = join(dirPath, entry);
+				// nosemgrep
+				const fullPath = join(dirPath, entry); // nosemgrep
 				const relativePath = relative(this.rootPath, fullPath);
 
 				if (this.shouldIgnore(fullPath)) {
@@ -153,13 +102,34 @@ export class FileScanner {
 	}
 
 	/**
+	 * Convert a simple glob-like pattern (using '*' as wildcard) to a RegExp.
+	 * Escapes regex metacharacters before expanding '*' to '.*'.
+	 */
+	private globToRegExp(pattern: string): RegExp {
+		// Validate pattern to prevent ReDoS - only allow safe glob patterns
+		if (pattern.length > 1000) {
+			throw new Error('Pattern too long');
+		}
+
+		// Only allow safe characters in glob patterns
+		if (/[^a-zA-Z0-9_\-./\\*?+[\]{}^$|()]/.test(pattern)) {
+			throw new Error('Pattern contains unsafe characters');
+		}
+
+		// Escape all regex metacharacters, then replace escaped '*' with '.*'
+		const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const regexSource = escaped.replace(/\\\*/g, '.*');
+		return new RegExp(regexSource, 'i'); /* nosemgrep */
+	}
+
+	/**
 	 * Get files matching specific patterns
 	 */
 	public getFilesByPattern(patterns: string[]): string[] {
 		const scanResult = this.scan();
 		return scanResult.files.filter(file =>
 			patterns.some(pattern => {
-				const regex = new RegExp(pattern.replace('*', '.*'), 'i');
+				const regex = this.globToRegExp(pattern);
 				return regex.test(file) || regex.test(basename(file));
 			}),
 		);

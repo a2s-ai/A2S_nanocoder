@@ -1,15 +1,18 @@
 import {convertToMarkdown} from '@nanocollective/get-md';
+import {Box, Text} from 'ink';
 import React from 'react';
-import {Text, Box} from 'ink';
-import type {ToolHandler, ToolDefinition} from '@/types/index';
-import {ThemeContext} from '@/hooks/useTheme';
-import ToolMessage from '@/components/tool-message';
+
+import {MAX_URL_CONTENT_BYTES} from '@/constants';
+import {useTheme} from '@/hooks/useTheme';
+import type {NanocoderToolExport} from '@/types/core';
+import {jsonSchema, tool} from '@/types/core';
+import {calculateTokens} from '@/utils/token-calculator';
 
 interface FetchArgs {
 	url: string;
 }
 
-const handler: ToolHandler = async (args: FetchArgs): Promise<string> => {
+const executeFetchUrl = async (args: FetchArgs): Promise<string> => {
 	// Validate URL
 	try {
 		new URL(args.url);
@@ -27,10 +30,9 @@ const handler: ToolHandler = async (args: FetchArgs): Promise<string> => {
 			throw new Error('No content returned from URL');
 		}
 
-		// Limit content size to prevent context overflow (~100KB)
-		const maxSize = 100000;
-		if (content.length > maxSize) {
-			const truncated = content.substring(0, maxSize);
+		// Limit content size to prevent context overflow
+		if (content.length > MAX_URL_CONTENT_BYTES) {
+			const truncated = content.substring(0, MAX_URL_CONTENT_BYTES);
 			return `${truncated}\n\n[Content truncated - original size was ${content.length} characters]`;
 		}
 
@@ -41,70 +43,81 @@ const handler: ToolHandler = async (args: FetchArgs): Promise<string> => {
 	}
 };
 
-// Create a component that will re-render when theme changes
-const FetchUrlFormatter = React.memo(
-	({args, result}: {args: FetchArgs; result?: string}) => {
-		const theme = React.useContext(ThemeContext);
-		if (!theme) {
-			throw new Error('ThemeContext not found');
-		}
-		const {colors} = theme;
-		const url = args.url || 'unknown';
+const fetchUrlCoreTool = tool({
+	description: 'Fetch and parse markdown content from a URL',
+	inputSchema: jsonSchema<FetchArgs>({
+		type: 'object',
+		properties: {
+			url: {
+				type: 'string',
+				description: 'The URL to fetch content from.',
+			},
+		},
+		required: ['url'],
+	}),
+	// Low risk: read-only operation, never requires approval
+	needsApproval: false,
+	execute: async (args, _options) => {
+		return await executeFetchUrl(args);
+	},
+});
 
-		// Calculate content stats from result
-		let contentSize = 0;
-		let estimatedTokens = 0;
-		let wasTruncated = false;
+function FetchUrlFormatterComponent({
+	url,
+	result,
+}: {
+	url: string;
+	result?: string;
+}): React.ReactElement {
+	const {colors} = useTheme();
 
-		if (result) {
-			contentSize = result.length;
-			estimatedTokens = Math.ceil(contentSize / 4);
-			wasTruncated = result.includes('[Content truncated');
-		}
+	// Calculate content stats from result
+	let estimatedTokens = 0;
+	let wasTruncated = false;
 
-		const messageContent = (
-			<Box flexDirection="column">
-				<Text color={colors.tool}>⚒ fetch_url</Text>
+	if (result) {
+		estimatedTokens = calculateTokens(result);
+		wasTruncated = result.includes('[Content truncated');
+	}
 
-				<Box>
-					<Text color={colors.secondary}>URL: </Text>
-					<Text color={colors.white}>{url}</Text>
+	return (
+		<Box flexDirection="column" marginBottom={1}>
+			<Text color={colors.tool}>⚒ fetch_url</Text>
+			<Box>
+				<Text color={colors.secondary}>URL: </Text>
+				<Box marginLeft={1}>
+					<Text color={colors.text}>{url}</Text>
 				</Box>
-
-				{result && (
-					<>
+			</Box>
+			{result && (
+				<>
+					<Box>
+						<Text color={colors.secondary}>Tokens: </Text>
+						<Text color={colors.text}>~{estimatedTokens} tokens</Text>
+					</Box>
+					{wasTruncated && (
 						<Box>
-							<Text color={colors.secondary}>Content: </Text>
-							<Text color={colors.white}>
-								{contentSize.toLocaleString()} characters (~{estimatedTokens}{' '}
-								tokens)
+							<Text color={colors.warning}>
+								⚠ Content was truncated to 100KB
 							</Text>
 						</Box>
+					)}
+				</>
+			)}
+		</Box>
+	);
+}
 
-						{wasTruncated && (
-							<Box>
-								<Text color={colors.warning}>
-									⚠ Content was truncated to 100KB
-								</Text>
-							</Box>
-						)}
-					</>
-				)}
-			</Box>
-		);
-
-		return <ToolMessage message={messageContent} hideBox={true} />;
-	},
-);
-
-const formatter = (
+const fetchUrlFormatter = (
 	args: FetchArgs,
 	result?: string,
-): Promise<React.ReactElement> => {
-	return Promise.resolve(<FetchUrlFormatter args={args} result={result} />);
+): React.ReactElement => {
+	return (
+		<FetchUrlFormatterComponent url={args.url || 'unknown'} result={result} />
+	);
 };
 
-const validator = (
+const fetchUrlValidator = (
 	args: FetchArgs,
 ): Promise<{valid: true} | {valid: false; error: string}> => {
 	// Validate URL format
@@ -144,27 +157,9 @@ const validator = (
 	}
 };
 
-export const fetchUrlTool: ToolDefinition = {
-	handler,
-	formatter,
-	validator,
-	requiresConfirmation: false,
-	config: {
-		type: 'function',
-		function: {
-			name: 'fetch_url',
-			description:
-				'Fetch and convert any URL to clean, LLM-friendly markdown text using @nanocollective/get-md. Automatically extracts main content, removes ads/navigation, and converts to well-structured markdown. Useful for reading documentation, articles, or web content.',
-			parameters: {
-				type: 'object',
-				properties: {
-					url: {
-						type: 'string',
-						description: 'The URL to fetch and convert to markdown.',
-					},
-				},
-				required: ['url'],
-			},
-		},
-	},
+export const fetchUrlTool: NanocoderToolExport = {
+	name: 'fetch_url' as const,
+	tool: fetchUrlCoreTool,
+	formatter: fetchUrlFormatter,
+	validator: fetchUrlValidator,
 };

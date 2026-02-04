@@ -1,42 +1,27 @@
-import React from 'react';
 import test from 'ava';
+import stripAnsi from 'strip-ansi';
 import {render} from 'ink-testing-library';
-import AssistantMessage, {
-	decodeHtmlEntities,
-	wrapText,
-	parseMarkdownTable,
-	parseMarkdown,
-} from './assistant-message';
-import {ThemeContext} from '../hooks/useTheme';
+import React from 'react';
 import {themes} from '../config/themes';
-
-// Local Colors type used for tests (the module does not export 'Colors')
-type Colors = {
-	primary: string;
-	secondary: string;
-	success: string;
-	error: string;
-	warning: string;
-	info: string;
-	white: string;
-	black: string;
-	tool: string;
-	diffAdded: string;
-	diffRemoved: string;
-	diffAddedText: string;
-	diffRemovedText: string;
-};
+import {ThemeContext} from '../hooks/useTheme';
+import {
+	type Colors,
+	decodeHtmlEntities,
+	parseMarkdown,
+	parseMarkdownTable,
+} from '../markdown-parser/index';
+import AssistantMessage from './assistant-message';
 
 // Mock theme colors for testing
-const mockColors: Colors = {
+const mockColors: any = {
 	primary: '#3b82f6',
 	secondary: '#6b7280',
 	success: '#10b981',
 	error: '#ef4444',
 	warning: '#f59e0b',
 	info: '#3b82f6',
-	white: '#ffffff',
-	black: '#000000',
+	text: '#ffffff',
+	base: '#000000',
 	tool: '#8b5cf6',
 	diffAdded: '#10b981',
 	diffRemoved: '#ef4444',
@@ -333,61 +318,6 @@ test('decodeHtmlEntities handles multiple occurrences of same entity', t => {
 });
 
 // ============================================================================
-// Text Wrapping Tests
-// ============================================================================
-
-test('wrapText returns single line for short text', t => {
-	const text = 'Short text';
-	const result = wrapText(text, 50);
-	t.deepEqual(result, ['Short text']);
-});
-
-test('wrapText wraps at word boundaries', t => {
-	const text = 'This is a long sentence that needs to be wrapped';
-	const result = wrapText(text, 20);
-	t.true(result.length > 1);
-	t.true(result.every(line => line.length <= 20));
-});
-
-test('wrapText handles exact width match', t => {
-	const text = 'Exactly twenty chars';
-	const result = wrapText(text, 20);
-	t.deepEqual(result, ['Exactly twenty chars']);
-});
-
-test('wrapText splits multiple times for very long text', t => {
-	const text =
-		'This is a very long sentence with many words that will require multiple line breaks to fit within the specified width constraint';
-	const result = wrapText(text, 30);
-	t.true(result.length >= 4);
-	t.true(result.every(line => line.length <= 30));
-});
-
-test('wrapText handles single long word', t => {
-	const text = 'verylongwordthatcannotbewrapped';
-	const result = wrapText(text, 10);
-	// Should return the word as-is since it can't be broken
-	t.deepEqual(result, ['verylongwordthatcannotbewrapped']);
-});
-
-test('wrapText preserves word order', t => {
-	const text = 'one two three four five six';
-	const result = wrapText(text, 15);
-	const rejoined = result.join(' ');
-	t.is(rejoined, text);
-});
-
-test('wrapText handles empty string', t => {
-	const result = wrapText('', 50);
-	t.deepEqual(result, ['']);
-});
-
-test('wrapText handles single word', t => {
-	const result = wrapText('word', 10);
-	t.deepEqual(result, ['word']);
-});
-
-// ============================================================================
 // Markdown Table Parsing Tests
 // ============================================================================
 
@@ -458,6 +388,25 @@ test('parseMarkdownTable normalizes column count', t => {
 	t.true(result.includes('3'));
 });
 
+test('parseMarkdownTable handles markdown formatting in cells', t => {
+	const table = `| Command | Description |
+|---------|-------------|
+| \`npm run build\` | Compile TypeScript |
+| **Important** | Do this first |
+| [Link](url) | External reference |
+`;
+	const result = parseMarkdownTable(table, mockColors);
+	// Should strip markdown for proper alignment
+	t.true(result.includes('Command'));
+	t.true(result.includes('Description'));
+	t.true(result.includes('npm run build'));
+	t.true(result.includes('Important'));
+	t.true(result.includes('Link'));
+	// Should have proper table structure
+	t.true(result.includes('│'));
+	t.true(result.includes('─'));
+});
+
 // ============================================================================
 // Markdown Parsing Tests
 // ============================================================================
@@ -482,6 +431,24 @@ test('parseMarkdown handles italic text', t => {
 	const result = parseMarkdown(text, mockColors);
 	t.true(result.includes('italic'));
 	t.true(result.includes('text'));
+});
+
+test('parseMarkdown preserves underscores in identifiers', t => {
+	const text =
+		'Use `create_file`, `read_file`, or `search_file_contents` functions';
+	const result = parseMarkdown(text, mockColors);
+	// Underscores should be preserved in code identifiers
+	t.true(result.includes('create_file'));
+	t.true(result.includes('read_file'));
+	t.true(result.includes('search_file_contents'));
+});
+
+test('parseMarkdown preserves underscores in regular text', t => {
+	const text = 'The variable_name and function_call should remain intact';
+	const result = parseMarkdown(text, mockColors);
+	// Underscores should NOT be treated as markdown formatting
+	t.true(result.includes('variable_name'));
+	t.true(result.includes('function_call'));
 });
 
 test('parseMarkdown handles headings', t => {
@@ -516,10 +483,15 @@ test('parseMarkdown handles unordered lists', t => {
 });
 
 test('parseMarkdown handles ordered lists', t => {
-	const text = '1. First item\n2. Second item';
+	const text = '1. First item\n2. Second item\n3. Third item';
 	const result = parseMarkdown(text, mockColors);
+	// Should preserve the numbers
+	t.true(result.includes('1.'));
+	t.true(result.includes('2.'));
+	t.true(result.includes('3.'));
 	t.true(result.includes('First item'));
 	t.true(result.includes('Second item'));
+	t.true(result.includes('Third item'));
 });
 
 test('parseMarkdown decodes HTML entities', t => {
@@ -599,4 +571,229 @@ test('parseMarkdown handles code blocks without language', t => {
 	const text = '```\nplain code\n```';
 	const result = parseMarkdown(text, mockColors);
 	t.true(result.includes('plain code'));
+});
+
+// ============================================================================
+// Edge Case Tests - Things That Should NOT Be Formatted
+// ============================================================================
+
+test('parseMarkdown does not create bullet list from hyphen in middle of line', t => {
+	const text = 'The file path is C:\\Users\\John - Documents\\file.txt';
+	const result = parseMarkdown(text, mockColors);
+	// Should not have bullet point character
+	t.false(result.includes('•'));
+	t.true(result.includes('C:\\Users\\John - Documents\\file.txt'));
+});
+
+test('parseMarkdown does not format asterisks in math expressions', t => {
+	const text = 'Calculate 5 * 3 * 2 = 30';
+	const result = parseMarkdown(text, mockColors);
+	// Should preserve the asterisks and not apply formatting
+	t.true(result.includes('5 * 3 * 2'));
+});
+
+test('parseMarkdown does not format asterisks in file globs', t => {
+	const text = 'Use glob pattern *.tsx or **/*.js to match files';
+	const result = parseMarkdown(text, mockColors);
+	// Should preserve asterisks in glob patterns
+	t.true(result.includes('*.tsx'));
+	t.true(result.includes('**/*.js'));
+});
+
+test('parseMarkdown does not create heading from hash in middle of line', t => {
+	const text = 'The commit hash is abc123 #main branch';
+	const result = parseMarkdown(text, mockColors);
+	// Should not be formatted as heading since # is not at line start
+	t.true(result.includes('#main'));
+});
+
+test('parseMarkdown does not create heading from hex color', t => {
+	const text = 'Use color #3b82f6 for the button';
+	const result = parseMarkdown(text, mockColors);
+	// Should not format as heading
+	t.true(result.includes('#3b82f6'));
+});
+
+test('parseMarkdown preserves asterisks inside code blocks', t => {
+	const text = '```javascript\nconst pattern = /\\*\\*/g;\n```';
+	const result = parseMarkdown(text, mockColors);
+	// Asterisks inside code block should not trigger bold formatting
+	t.true(result.includes('pattern'));
+	// Code block content should be preserved
+	t.true(result.includes('/\\*\\*/g'));
+});
+
+test('parseMarkdown preserves markdown-like syntax inside inline code', t => {
+	const text = 'Use the pattern `**bold**` to make text bold';
+	const result = parseMarkdown(text, mockColors);
+	// The **bold** inside backticks should NOT be formatted
+	t.true(result.includes('**bold**'));
+});
+
+test('parseMarkdown does not format bullet with no space after hyphen', t => {
+	const text = 'The range is 1-10 and 20-30';
+	const result = parseMarkdown(text, mockColors);
+	// Should not create bullets for hyphens without spaces
+	t.false(result.includes('•'));
+	t.true(result.includes('1-10'));
+	t.true(result.includes('20-30'));
+});
+
+test('parseMarkdown handles mixed asterisks and bullet points', t => {
+	const text = '* First item\n* Second item with 2 * 3 = 6 calculation';
+	const result = parseMarkdown(text, mockColors);
+	// Should have bullets for list items
+	t.true(result.includes('•'));
+	t.true(result.includes('First item'));
+	// But preserve asterisks in math
+	t.true(result.includes('2 * 3'));
+});
+
+test('parseMarkdown does not format single asterisk surrounded by word chars', t => {
+	const text = 'The pointer syntax is char*ptr or int*value';
+	const result = parseMarkdown(text, mockColors);
+	// Should preserve pointer syntax
+	t.true(result.includes('char*ptr'));
+	t.true(result.includes('int*value'));
+});
+
+test('parseMarkdown preserves double asterisks in code comments', t => {
+	const text = 'In C: /* comment */ and /** doc comment */';
+	const result = parseMarkdown(text, mockColors);
+	// Should not treat /* or /** as bold markers
+	t.true(result.includes('/*'));
+	t.true(result.includes('/**'));
+});
+
+test('parseMarkdown handles hyphen in URL correctly', t => {
+	const text = 'Visit [my-site](https://example-domain.com/my-page)';
+	const result = parseMarkdown(text, mockColors);
+	// Should not create bullets from hyphens in URLs
+	t.false(result.includes('•'));
+	t.true(result.includes('example-domain.com/my-page'));
+});
+
+test('parseMarkdown handles bullet list with bold text correctly', t => {
+	const text = `* **Reading and understanding code** – view files
+* **Creating new files** – scaffold components
+* **Editing existing code** – insert, replace, or delete`;
+	const result = parseMarkdown(text, mockColors);
+	// Should have bullets
+	t.true(result.includes('•'));
+	// Should have the text (bold markers may be removed)
+	t.true(result.includes('Reading and understanding code'));
+	t.true(result.includes('Creating new files'));
+	t.true(result.includes('Editing existing code'));
+	// Should NOT have italic formatting bleeding across lines
+	// (checking that all items have similar formatting)
+});
+
+test('parseMarkdown handles nested/indented bullet lists', t => {
+	const text = `- Top level item
+  - Nested item 1
+  - Nested item 2
+    - Double nested
+- Another top level`;
+	const result = parseMarkdown(text, mockColors);
+	const plainResult = stripAnsi(result);
+	// Should have bullets
+	t.true(plainResult.includes('•'));
+	t.true(plainResult.includes('Top level item'));
+	t.true(plainResult.includes('Nested item 1'));
+	t.true(plainResult.includes('Double nested'));
+	// Check indentation is preserved (should have 2 spaces before nested bullets)
+	t.true(plainResult.includes('  • Nested item 1'));
+	t.true(plainResult.includes('    • Double nested'));
+});
+
+test('parseMarkdown handles nested numbered lists', t => {
+	const text = `1. First item
+  1. Nested first
+  2. Nested second
+2. Second item`;
+	const result = parseMarkdown(text, mockColors);
+	const plainResult = stripAnsi(result);
+	t.true(plainResult.includes('1. First item'));
+	t.true(plainResult.includes('2. Second item'));
+	// Check nested numbering preserved
+	t.true(plainResult.includes('  1. Nested first'));
+	t.true(plainResult.includes('  2. Nested second'));
+});
+
+test('parseMarkdown restores inline code placeholders correctly', t => {
+	const text = 'Use `npm install` and `npm start` commands';
+	const result = parseMarkdown(text, mockColors);
+	// Should have the code content
+	t.true(result.includes('npm install'));
+	t.true(result.includes('npm start'));
+	// Should NOT have placeholder remnants
+	t.false(result.includes('__INLINE_CODE'));
+	t.false(result.includes('_INLINE'));
+	t.false(result.includes('CODE_'));
+});
+
+test('parseMarkdown renders tables with plain text (no markdown)', t => {
+	const text = `| Command | Description |
+|---------|-------------|
+| \`npm install\` | Install dependencies |
+| \`npm start\` | Start the application |`;
+	const result = parseMarkdown(text, mockColors);
+	// Should have the plain text content (backticks removed)
+	t.true(result.includes('npm install'));
+	t.true(result.includes('npm start'));
+	t.true(result.includes('Install dependencies'));
+	// Should NOT have backticks in table
+	t.false(result.includes('`npm install`'));
+	t.false(result.includes('`npm start`'));
+	// Should NOT have placeholder remnants or corruption
+	t.false(result.includes('__INLINE_CODE'));
+	t.false(result.includes('_INLINE'));
+	t.false(result.includes('CODE_'));
+	t.false(result.includes('INLINECODE'));
+});
+
+test('parseMarkdown converts <br> tags to newlines', t => {
+	const text = 'Line one<br>Line two<br/>Line three<BR>Line four';
+	const result = parseMarkdown(text, mockColors);
+	const lines = result.split('\n');
+	t.true(lines.length >= 4);
+	t.true(result.includes('Line one'));
+	t.true(result.includes('Line two'));
+	t.true(result.includes('Line three'));
+	t.true(result.includes('Line four'));
+	t.false(result.includes('<br'));
+	t.false(result.includes('<BR'));
+});
+
+test('parseMarkdown preserves spacing before bullet lists', t => {
+	const text = `I can assist with tasks such as:
+
+- First item
+- Second item
+
+Let me know what you'd like to work on.`;
+	const result = parseMarkdown(text, mockColors);
+
+	// Should have the paragraph text
+	t.true(result.includes('I can assist with tasks such as:'));
+
+	// Should have bullets
+	t.true(result.includes('•'));
+	t.true(result.includes('First item'));
+	t.true(result.includes('Second item'));
+
+	// Should have the closing text
+	t.true(result.includes("Let me know what you'd like to work on."));
+
+	// Should have proper spacing - check for double newline before list
+	// (The blank line should be preserved)
+	const lines = result.split('\n');
+	const suchAsIndex = lines.findIndex(l => l.includes('I can assist'));
+	const firstBulletIndex = lines.findIndex(l => l.includes('• First'));
+
+	// There should be at least one empty line between them
+	t.true(
+		firstBulletIndex - suchAsIndex >= 2,
+		'Should have blank line before list',
+	);
 });

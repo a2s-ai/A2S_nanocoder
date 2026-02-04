@@ -1,5 +1,7 @@
-import type {ToolCall, ToolResult, ToolHandler} from '@/types/index';
 import type {ToolManager} from '@/tools/tool-manager';
+import type {ToolCall, ToolHandler, ToolResult} from '@/types/index';
+import {formatError} from '@/utils/error-formatter';
+import {parseToolArguments} from '@/utils/tool-args-parser';
 
 // This will be set by the ChatSession
 let toolRegistryGetter: (() => Record<string, ToolHandler>) | null = null;
@@ -22,6 +24,12 @@ export function getToolManager(): ToolManager | null {
 }
 
 export async function processToolUse(toolCall: ToolCall): Promise<ToolResult> {
+	// Handle XML validation errors by throwing (will be caught and returned as error ToolResult)
+	if (toolCall.function.name === '__xml_validation_error__') {
+		const args = toolCall.function.arguments as {error: string};
+		throw new Error(args.error);
+	}
+
 	if (!toolRegistryGetter) {
 		throw new Error('Tool registry not initialized');
 	}
@@ -33,15 +41,12 @@ export async function processToolUse(toolCall: ToolCall): Promise<ToolResult> {
 	}
 
 	try {
-		// Parse arguments if they're a JSON string
-		let parsedArgs: Record<string, unknown> = toolCall.function.arguments;
-		if (typeof parsedArgs === 'string') {
-			try {
-				parsedArgs = JSON.parse(parsedArgs) as Record<string, unknown>;
-			} catch (e) {
-				throw new Error(`Invalid tool arguments: ${(e as Error).message}`);
-			}
-		}
+		// Parse arguments - use strict mode to throw error on parse failure
+		// Strict mode is required here to catch malformed arguments before tool execution
+		const parsedArgs = parseToolArguments<Record<string, unknown>>(
+			toolCall.function.arguments,
+			{strict: true},
+		);
 		const result = await handler(parsedArgs);
 		return {
 			tool_call_id: toolCall.id,
@@ -51,9 +56,7 @@ export async function processToolUse(toolCall: ToolCall): Promise<ToolResult> {
 		};
 	} catch (error) {
 		// Convert exceptions to error messages that the model can see and correct
-		const errorMessage = `Error: ${
-			error instanceof Error ? error.message : String(error)
-		}`;
+		const errorMessage = `Error: ${formatError(error)}`;
 		return {
 			tool_call_id: toolCall.id,
 			role: 'tool',

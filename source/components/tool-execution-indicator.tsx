@@ -1,4 +1,3 @@
-import React from 'react';
 import {Box, Text} from 'ink';
 import Spinner from 'ink-spinner';
 import {useTheme} from '@/hooks/useTheme';
@@ -13,7 +12,7 @@ export default function ToolExecutionIndicator({
 	return (
 		<Box flexDirection="column" marginBottom={1}>
 			<Box>
-				<Spinner type="dots2" />
+				<Spinner type="dots" />
 				<Text color={colors.tool}> Executing tool: </Text>
 				<Text color={colors.primary}>{toolName}</Text>
 			</Box>

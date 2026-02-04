@@ -1,6 +1,7 @@
-import {Command} from '@/types/index';
 import React from 'react';
-import ErrorMessage from '@/components/error-message';
+import {ErrorMessage} from '@/components/message-box';
+import type {Command, Message} from '@/types/index';
+import {fuzzyScore} from '@/utils/fuzzy-matching';
 
 class CommandRegistry {
 	private commands = new Map<string, Command>();
@@ -22,15 +23,41 @@ class CommandRegistry {
 	}
 
 	getCompletions(prefix: string): string[] {
-		return Array.from(this.commands.keys())
-			.filter(name => name.startsWith(prefix))
-			.sort();
+		const commandNames = Array.from(this.commands.keys());
+
+		// No prefix: return all commands alphabetically
+		if (!prefix) {
+			return commandNames.sort((a, b) => a.localeCompare(b));
+		}
+
+		// Use fuzzy matching with scoring
+		const scoredCommands = commandNames
+			.map(name => ({
+				name,
+				score: fuzzyScore(name, prefix),
+			}))
+			.filter(cmd => cmd.score > 0) // Only include matches
+			.sort((a, b) => {
+				// Sort by score (descending)
+				if (b.score !== a.score) {
+					return b.score - a.score;
+				}
+				// If scores are equal, sort alphabetically
+				return a.name.localeCompare(b.name);
+			});
+
+		return scoredCommands.map(cmd => cmd.name);
 	}
 
 	async execute(
 		input: string,
-		messages: import('@/types/index').Message[],
-		metadata: {provider: string; model: string; tokens: number},
+		messages: Message[],
+		metadata: {
+			provider: string;
+			model: string;
+			tokens: number;
+			getMessageTokens: (message: Message) => number;
+		},
 	): Promise<void | string | React.ReactNode> {
 		const parts = input.trim().split(/\s+/);
 		const commandName = parts[0];
@@ -58,3 +85,6 @@ class CommandRegistry {
 }
 
 export const commandRegistry = new CommandRegistry();
+
+// Export the class for testing purposes
+export {CommandRegistry};

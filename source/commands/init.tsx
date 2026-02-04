@@ -1,15 +1,15 @@
-import {Command} from '@/types/index';
-import React from 'react';
-import {TitledBox, titleStyles} from '@mishieck/ink-titled-box';
+import {existsSync, mkdirSync, writeFileSync} from 'fs';
 import {Box, Text} from 'ink';
+import {join} from 'path';
+import React from 'react';
+import {ErrorMessage} from '@/components/message-box';
+import {TitledBoxWithPreferences} from '@/components/ui/titled-box';
 import {colors} from '@/config/index';
 import {useTerminalWidth} from '@/hooks/useTerminalWidth';
-import ErrorMessage from '@/components/error-message';
-import {existsSync, mkdirSync, writeFileSync} from 'fs';
-import {join} from 'path';
-import {ProjectAnalyzer} from '@/init/project-analyzer';
 import {AgentsTemplateGenerator} from '@/init/agents-template-generator';
 import {ExistingRulesExtractor} from '@/init/existing-rules-extractor';
+import {ProjectAnalyzer} from '@/init/project-analyzer';
+import {Command} from '@/types/index';
 
 function InitSuccess({
 	created,
@@ -25,10 +25,8 @@ function InitSuccess({
 }) {
 	const boxWidth = useTerminalWidth();
 	return (
-		<TitledBox
-			borderStyle="round"
-			titles={['Project Initialized']}
-			titleStyles={titleStyles.pill}
+		<TitledBoxWithPreferences
+			title="Project Initialized"
 			width={boxWidth}
 			borderColor={colors.primary}
 			paddingX={2}
@@ -45,7 +43,7 @@ function InitSuccess({
 			{analysis && (
 				<>
 					<Box marginBottom={1}>
-						<Text color={colors.white} bold>
+						<Text color={colors.text} bold>
 							Project Analysis:
 						</Text>
 					</Box>
@@ -66,7 +64,7 @@ function InitSuccess({
 			)}
 
 			<Box marginBottom={1}>
-				<Text color={colors.white} bold>
+				<Text color={colors.text} bold>
 					Files Created:
 				</Text>
 			</Box>
@@ -78,39 +76,22 @@ function InitSuccess({
 			))}
 
 			<Box marginTop={1} flexDirection="column">
-				<Text color={colors.white}>
-					Your project is now ready for AI-assisted development!
-				</Text>
+				<Box marginBottom={1}>
+					<Text color={colors.text}>
+						Your project is now ready for AI-assisted development!
+					</Text>
+				</Box>
 				<Text color={colors.secondary}>
 					The AGENTS.md file will help AI understand your project context.
 				</Text>
 			</Box>
-		</TitledBox>
+		</TitledBoxWithPreferences>
 	);
 }
 
 function InitError({message}: {message: string}) {
-	return <ErrorMessage message={`✗ ${message}`} />;
+	return <ErrorMessage hideBox={true} message={`✗ ${message}`} />;
 }
-
-const DEFAULT_CONFIG = {
-	nanocoder: {
-		providers: [
-			{
-				name: 'OpenRouter',
-				baseUrl: 'https://openrouter.ai/api/v1',
-				apiKey: 'your-openrouter-api-key-here',
-				models: ['openai/gpt-4o-mini', 'anthropic/claude-3-haiku'],
-			},
-			{
-				name: 'Local Ollama',
-				baseUrl: 'http://localhost:11434/v1',
-				models: ['llama3.2', 'qwen2.5-coder'],
-			},
-		],
-		mcpServers: [],
-	},
-};
 
 // Enhanced example commands based on detected project type
 const getExampleCommands = (projectType: string, primaryLanguage: string) => {
@@ -212,28 +193,27 @@ Make it reusable and well-documented.`;
 export const initCommand: Command = {
 	name: 'init',
 	description:
-		'Initialize nanocoder configuration and analyze project structure',
-	handler: (_args: string[], _messages, _metadata) => {
+		'Initialize nanocoder configuration and analyze project structure. Use --force to regenerate AGENTS.md.',
+	handler: (args: string[], _messages, _metadata) => {
 		const cwd = process.cwd();
 		const created: string[] = [];
+		const forceRegenerate = args.includes('--force') || args.includes('-f');
 
 		try {
 			// Check if already initialized
-			const configPath = join(cwd, 'agents.config.json');
 			const agentsPath = join(cwd, 'AGENTS.md');
 			const nanocoderDir = join(cwd, '.nanocoder');
 
 			// Check for existing initialization
-			const hasConfig = existsSync(configPath);
 			const hasAgents = existsSync(agentsPath);
 			const hasNanocoder = existsSync(nanocoderDir);
 
-			if (hasConfig && hasAgents && hasNanocoder) {
+			if (hasAgents && hasNanocoder && !forceRegenerate) {
 				return Promise.resolve(
 					React.createElement(InitError, {
 						key: `init-error-${Date.now()}`,
 						message:
-							'Project already fully initialized. Found agents.config.json, AGENTS.md, and .nanocoder/ directory.',
+							'Project already initialized. Found AGENTS.md and .nanocoder/ directory. Use /init --force to regenerate.',
 					}),
 				);
 			}
@@ -246,24 +226,18 @@ export const initCommand: Command = {
 			const analyzer = new ProjectAnalyzer(cwd);
 			const analysis = analyzer.analyze();
 
-			// Extract existing AI configuration files
-			const rulesExtractor = new ExistingRulesExtractor(cwd);
+			// Extract existing AI configuration files (skip AGENTS.md when force regenerating)
+			const rulesExtractor = new ExistingRulesExtractor(cwd, forceRegenerate);
 			const existingRules = rulesExtractor.extractExistingRules();
 
-			// Create agents.config.json if it doesn't exist
-			if (!hasConfig) {
-				writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
-				created.push('agents.config.json');
-			}
-
 			// Create AGENTS.md based on analysis and existing rules
-			if (!hasAgents) {
+			if (!hasAgents || forceRegenerate) {
 				const agentsContent = AgentsTemplateGenerator.generateAgentsMd(
 					analysis,
 					existingRules,
 				);
 				writeFileSync(agentsPath, agentsContent);
-				created.push('AGENTS.md');
+				created.push(hasAgents ? 'AGENTS.md (regenerated)' : 'AGENTS.md');
 
 				// Report found existing rules
 				if (existingRules.length > 0) {
