@@ -270,6 +270,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		],
 		buildConfig: answers => ({
 			name: answers.providerName || 'anthropic',
+			sdkProvider: 'anthropic',
 			baseUrl: 'https://api.anthropic.com/v1',
 			apiKey: answers.apiKey,
 			models: answers.model
@@ -403,6 +404,39 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		buildConfig: answers => ({
 			name: answers.providerName || 'GitHub Models',
 			baseUrl: 'https://models.github.ai/inference',
+			apiKey: answers.apiKey,
+			models: answers.model
+				.split(',')
+				.map(m => m.trim())
+				.filter(Boolean),
+		}),
+	},
+	{
+		id: 'kimi-code',
+		name: 'Kimi Code',
+		fields: [
+			{
+				name: 'apiKey',
+				prompt: 'API Key',
+				required: true,
+				sensitive: true,
+			},
+			{
+				name: 'model',
+				prompt: 'Model name(s) (comma-separated)',
+				default: 'kimi-for-coding',
+				required: true,
+			},
+			{
+				name: 'providerName',
+				prompt: 'Provider name',
+				default: 'Kimi Code',
+			},
+		],
+		buildConfig: answers => ({
+			name: answers.providerName || 'Kimi Code',
+			sdkProvider: 'anthropic',
+			baseUrl: 'https://api.kimi.com/coding/v1',
 			apiKey: answers.apiKey,
 			models: answers.model
 				.split(',')

@@ -357,7 +357,7 @@ Nanocoder supports any OpenAI-compatible API through a unified provider configur
 
 1. **Interactive Setup (Recommended for new users)**: Run `/setup-providers` inside Nanocoder for a guided wizard with provider templates. The wizard allows you to:
    - Choose between project-level or global configuration
-   - Select from common provider templates (Ollama, OpenRouter, LM Studio, etc.)
+   - Select from common provider templates (Ollama, OpenRouter, LM Studio, Kimi Code, etc.)
    - Add custom OpenAI-compatible providers manually
    - Edit or delete existing providers
    - Fetch available models automatically from your provider
@@ -465,6 +465,7 @@ Nanocoder looks for configuration in the following order (first found wins):
 - **GitHub Models**: `"baseUrl": "https://models.github.ai/inference"` (requires PAT with `models:read` scope)
 - **Z.ai**: `"baseUrl": "https://api.z.ai/api/paas/v4/"`
 - **Z.ai Coding**: `"baseUrl": "https://api.z.ai/api/coding/paas/v4/"`
+- **Kimi Code**: `"sdkProvider": "anthroopic"`, `"baseUrl": "https://api.kimi.com/coding/v1"`
 - **Google Gemini**: `"sdkProvider": "google"` (get API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
 
 **Provider Configuration:**
@@ -477,6 +478,7 @@ Nanocoder looks for configuration in the following order (first found wins):
 - `sdkProvider`: AI SDK provider package to use (optional, defaults to `openai-compatible`)
   - `openai-compatible`: Default, works with any OpenAI-compatible API
   - `google`: Use `@ai-sdk/google` for native Google Gemini support (required for Gemini 3 models with tool calling)
+  - `anthropic`: Use `@ai-sdk/anthropic` for providers that require it like Kimi Coding
 
 **Environment Variables:**
 

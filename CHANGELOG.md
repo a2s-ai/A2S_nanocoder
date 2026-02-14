@@ -1,3 +1,71 @@
+# 1.22.4
+
+- Security: Tool validators now run inside the AI SDK's auto-execution loop. Previously, tools with `needsApproval: false` (like `read_file`) were auto-executed by the AI SDK's `generateText` without any path validation, allowing the model to read or write files outside the project directory using absolute or `~` paths. Validators are now wrapped into each tool's `execute` function at registration time, ensuring validation runs in all code paths.
+
+- Security: Reject home directory shorthand (`~`) in file path validation. Paths starting with `~` are not expanded by Node.js and could bypass project boundary checks.
+
+- Fix: Tab characters in code blocks within assistant messages now render at 2-space width instead of the terminal default of 8 spaces. This prevents long lines from wrapping prematurely and eliminates the blocky visual effect on messages containing indented code.
+
+- Fix: `normalizeIndentation` no longer short-circuits when the minimum indent is 0. Previously, if any line in the context window had zero indentation, raw tab characters passed through to the terminal unchanged, rendering at 8-space width in `string_replace` diff previews.
+
+# 1.22.3
+
+- Fix: Removed tool call deduplication from JSON parser that silently dropped duplicate tool calls, breaking the 1:1 pairing between tool calls and results expected by AI SDK. This caused "Tool result is missing for tool call" errors that would end the agent's turn prematurely. Consolidated three overlapping regex patterns into a single comprehensive pattern to prevent duplicate matches. Thanks to @cleyesode.
+
+- Fix: Added missing capture group for arguments in the consolidated JSON tool call regex pattern, which caused inline tool calls to have empty arguments instead of actual parsed values.
+
+- Fix: When the model batched read-only and write tools in a single response (e.g. `read_file` + `string_replace`), the auto-executed read tools would recurse into the next conversation turn, abandoning the confirmation-needed write tools. This left orphaned `tool_use` blocks without matching `tool_result` entries, triggering intermittent "Tool result is missing for tool call" errors with the Anthropic provider.
+
+- Dependency updates: `@ai-sdk/openai-compatible` 2.0.27, `undici` 7.21.0, `@biomejs/biome` 2.3.14, `@types/vscode` 1.109.0, `@types/node` 25.2.1.
+
+# 1.22.2
+
+- Fix: Markdown tables in assistant messages were rendered at full terminal width instead of accounting for the message box border and padding, causing broken box-drawing characters when lines wrapped.
+
+# 1.22.1
+
+- Added native Anthropic SDK support via `@ai-sdk/anthropic` package. The Anthropic Claude provider template now uses `sdkProvider: 'anthropic'` for direct API integration instead of the OpenAI-compatible wrapper.
+
+- Fixed Kimi Code provider template to use the native `@ai-sdk/anthropic` SDK with correct base URL and configuration passthrough.
+
+- Fix: User message token count now reflects the full assembled content including pasted content and tagged file contents, instead of only counting the placeholder text.
+
+- Fix: Removed aggressive tool call deduplication that silently dropped duplicate tool call IDs and identical function signatures. This could cause "Tool result is missing for tool call" errors with providers like Anthropic that strictly validate tool call/result pairing.
+
+# 1.22.0
+
+- Added `/explorer` command for interactive file browsing with tree view navigation, file preview with syntax highlighting, multi-file selection, search mode, and VS Code integration. Closes #298.
+
+- Added task management tools (`create_task`, `list_tasks`, `update_task`, `delete_task`) with `/tasks` slash command for models to track and manage progress on complex work. Tasks persist in `.nanocoder/tasks.json` and are automatically cleared on CLI boot and `/clear` command.
+
+- Added `/settings` command for interactive command menu to configure UI theme and shapes without editing config files directly.
+
+- Added `sdkProvider` configuration option for native Google Gemini support. This fixes the "missing thought_signature" error with Gemini 3 models by using the `@ai-sdk/google` package. Closes #302.
+
+- Added custom headers support in provider configuration. This enables authentication through tunnels like Cloudflare. Thanks to @nicolalamacchia.
+
+- Added Kimi Code provider template in configuration wizard.
+
+- Added new themes with updated user input and user message styling for better visual clarity and consistency.
+
+- Added token count display after messages and completion message to provide visibility into context usage throughout conversations.
+
+- Refactored git tools for better consistency, improved error handling, standardized parameter handling across all git operations, and enhanced user feedback messages.
+
+- Added line truncation in `write_file` and `string_replace` formatters to prevent excessive output from files with very long lines and neaten user experience on narrow terminals.
+
+- Fix: `/usage` command crash when context data is unavailable.
+
+- Fix: String replace error handling for edge cases.
+
+- Fix: Multiple security audit issues resolved.
+
+- Fix: Various styling improvements across components.
+
+- Fix: Dependency lockfile issues resolved.
+
+If there are any problems, feedback or thoughts please drop an issue or message us through Discord! Thank you for using Nanocoder. 🙌
+
 # 1.21.0
 
 - Added `/compact` command for context compression with `--restore` flag support to restore messages from backup. The command now includes auto-compact functionality, consistent token counting, and improved compression for very long messages. Thanks to @Pahari47.

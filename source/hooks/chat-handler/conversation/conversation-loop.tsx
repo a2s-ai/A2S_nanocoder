@@ -8,6 +8,7 @@ import {parseToolCalls} from '@/tool-calling/index';
 import type {ToolManager} from '@/tools/tool-manager';
 import type {LLMClient, Message, ToolCall, ToolResult} from '@/types/core';
 import {performAutoCompact} from '@/utils/auto-compact';
+import {formatElapsedTime, getRandomAdjective} from '@/utils/completion-note';
 import {MessageBuilder} from '@/utils/message-builder';
 import {parseToolArguments} from '@/utils/tool-args-parser';
 import {displayToolResult} from '@/utils/tool-result-display';
@@ -39,6 +40,7 @@ interface ProcessAssistantResponseParams {
 		systemMessage: Message,
 	) => void;
 	onConversationComplete?: () => void;
+	conversationStartTime?: number;
 }
 
 /**
@@ -73,7 +75,10 @@ export const processAssistantResponse = async (
 		conversationStateManager,
 		onStartToolConfirmationFlow,
 		onConversationComplete,
+		conversationStartTime,
 	} = params;
+
+	const startTime = conversationStartTime ?? Date.now();
 
 	// Ensure we have an abort controller for this request
 	let controller = abortController;
@@ -168,6 +173,7 @@ export const processAssistantResponse = async (
 		await processAssistantResponse({
 			...params,
 			messages: updatedMessagesWithError,
+			conversationStartTime: startTime,
 		});
 		return;
 	}
@@ -295,6 +301,7 @@ export const processAssistantResponse = async (
 		await processAssistantResponse({
 			...params,
 			messages: updatedMessagesWithError,
+			conversationStartTime: startTime,
 		});
 		return;
 	}
@@ -406,7 +413,6 @@ export const processAssistantResponse = async (
 				getNextComponentKey,
 			);
 
-			// If we have results, continue the conversation with them
 			if (directResults.length > 0) {
 				// Add tool results to messages
 				const directBuilder = new MessageBuilder(updatedMessages);
@@ -414,10 +420,25 @@ export const processAssistantResponse = async (
 				const updatedMessagesWithTools = directBuilder.build();
 				setMessages(updatedMessagesWithTools);
 
-				// Continue the main conversation loop with tool results as context
+				// If there are also tools needing confirmation, start that flow
+				// instead of recursing. Recursing would send messages to the API
+				// with the assistant's tool_calls for ALL tools but only results
+				// for the direct ones, causing "Tool result is missing" errors.
+				if (toolsNeedingConfirmation.length > 0) {
+					onStartToolConfirmationFlow(
+						toolsNeedingConfirmation,
+						updatedMessagesWithTools,
+						assistantMsg,
+						systemMessage,
+					);
+					return;
+				}
+
+				// No confirmation needed - continue conversation loop
 				await processAssistantResponse({
 					...params,
 					messages: updatedMessagesWithTools,
+					conversationStartTime: startTime,
 				});
 				return;
 			}
@@ -507,11 +528,22 @@ export const processAssistantResponse = async (
 		await processAssistantResponse({
 			...params,
 			messages: updatedMessagesWithNudge,
+			conversationStartTime: startTime,
 		});
 		return;
 	}
 
 	if (validToolCalls.length === 0 && cleanedContent.trim()) {
+		const adjective = getRandomAdjective();
+		const elapsed = formatElapsedTime(startTime);
+		addToChatQueue(
+			<InfoMessage
+				key={`completion-time-${getNextComponentKey()}`}
+				message={`Worked for a ${adjective} ${elapsed}.`}
+				hideBox={true}
+				marginBottom={2}
+			/>,
+		);
 		onConversationComplete?.();
 	}
 };
