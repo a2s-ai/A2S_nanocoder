@@ -665,6 +665,7 @@ You can override this directory using `NANOCODER_DATA_DIR`.
 - `/model` - Switch between available models
 - `/provider` - Switch between configured AI providers
 - `/status` - Display current status (CWD, provider, model, theme, available updates, AGENTS setup)
+- `/tasks` - Manage task list for tracking complex work (see [Task Management](#task-management) section)
 - `/model-database` - Browse coding models from OpenRouter (searchable, filterable by open/proprietary)
 - `/settings` - Interactive menu to access Nanocoder theme settings (theme, title-shape, nanocoder-shape) and commands
 - `/mcp` - Show connected MCP servers and their tools
@@ -676,6 +677,7 @@ You can override this directory using `NANOCODER_DATA_DIR`.
 - `/update` - Update Nanocoder to the latest version
 - `/usage` – Get current model context usage visually
 - `/lsp` – List connected LSP servers
+- `/schedule` – Schedule recurring AI tasks (see [Scheduled Tasks](#scheduled-tasks) section)
 - `/explorer` - Interactive file browser to navigate, preview, and select files for context
 - `!command` - Execute bash commands directly without leaving Nanocoder (output becomes context for the LLM)
 - `@file` - Include file contents in messages automatically via fuzzy search as you type
@@ -740,6 +742,73 @@ Nanocoder supports conversation checkpointing, allowing you to save snapshots of
 /checkpoint list
 ```
 
+#### Task Management
+
+Nanocoder provides a task management system for tracking complex multi-step work. Tasks persist in `.nanocoder/tasks.json` and are useful for both users and AI models to track progress on involved tasks.
+
+The LLM has access to task management tools (`create_task`, `list_tasks`, `update_task`, `delete_task`) and will automatically use them to track progress on complex work. You don't need to manually create tasks if you don't want to - the AI will manage them for you.
+
+**Task Commands:**
+
+- `/tasks` - Show all tasks with their status
+- `/tasks add <title>` - Add a new task (also works: `/tasks <title>`)
+- `/tasks remove <number>` - Remove a task by number (alias: `/tasks rm <number>`)
+- `/tasks clear` - Clear all tasks
+
+**Examples:**
+
+```bash
+# View current tasks
+/tasks
+
+# Add a new task
+/tasks add Implement user authentication
+
+# Or simply type the task title
+/tasks Implement user authentication
+
+# Remove a task (note the number)
+/tasks remove 1
+
+# Clear all tasks
+/tasks clear
+```
+
+**Storage:**
+
+- Tasks are stored in `.nanocoder/tasks.json` in your project directory
+- Tasks are automatically cleared when Nanocoder starts (to keep the task list fresh)
+- Tasks are also cleared when using the `/clear` command
+- Consider adding `.nanocoder/tasks.json` to your `.gitignore` if you want to exclude it from version control
+
+#### Scheduled Tasks
+
+Nanocoder supports scheduling recurring AI tasks using cron expressions. This is useful for automating routine coding tasks like dependency updates, code reviews, or daily standup summaries.
+
+**Quick Start:**
+
+```bash
+# Create a new scheduled task file
+/schedule create deps-update
+
+# Add a schedule for it (every Monday at 9am)
+/schedule add "0 9 * * MON" deps-update
+
+# Start the scheduler
+/schedule start
+```
+
+**Commands:**
+
+- `/schedule create <name>` - Create a new scheduled task file
+- `/schedule add "<cron>" <name>` - Add a schedule for a task (`.md` extension inferred)
+- `/schedule list` - Show all configured schedules
+- `/schedule remove <id>` - Remove a schedule by ID
+- `/schedule logs [id]` - Show execution logs
+- `/schedule start` - Enter scheduler mode to run scheduled tasks
+
+> **Full documentation**: See the [Scheduled Tasks Guide](docs/scheduler.md) for detailed usage, examples, and tips.
+
 #### File Explorer
 
 The `/explorer` command opens an interactive file browser for navigating your project, previewing files with syntax highlighting, and selecting multiple files to add as context.
@@ -786,44 +855,34 @@ The `/explorer` command opens an interactive file browser for navigating your pr
 
 #### Custom Commands
 
-Nanocoder supports custom commands defined as markdown files in the `.nanocoder/commands` directory. Like `agents.config.json`, this directory is created per codebase, allowing you to create reusable prompts with parameters and organize them by category specific to each project.
+Nanocoder supports custom commands defined as markdown files in `.nanocoder/commands/`. Define reusable AI prompts with parameters, aliases, and auto-injection support, organized per project.
 
-**Example custom command** (`.nanocoder/commands/test.md`):
+```bash
+# Create a command with AI assistance
+/commands create review-code
+
+# Or create the file manually in .nanocoder/commands/review-code.md
+```
+
+**Example** (`.nanocoder/commands/test.md`):
 
 ```markdown
 ---
-description: 'Generate comprehensive unit tests for the specified component'
-aliases: ['testing', 'spec']
-parameters:
-  - name: 'component'
-    description: 'The component or function to test'
-    required: true
+description: Generate comprehensive unit tests
+aliases: [unittest, test-gen]
+parameters: [filename]
 ---
 
-Generate comprehensive unit tests for {{component}}. Include:
-
-- Happy path scenarios
-- Edge cases and error handling
-- Mock dependencies where appropriate
-- Clear test descriptions
+Generate comprehensive unit tests for {{filename}}.
 ```
 
-**Usage**: `/test component="UserService"`
+**Usage**: `/test src/utils.ts`
 
-**Features**:
+**Commands**: `/commands` (list), `/commands show <name>`, `/commands refresh`, `/commands create <name>`
 
-- YAML frontmatter for metadata (description, aliases, parameters)
-- Template variable substitution with `{{parameter}}` syntax
-- Namespace support through directories (e.g., `/refactor:dry`)
-- Autocomplete integration for command discovery
-- Parameter validation and prompting
+**Pre-installed**: `/test`, `/review`, `/refactor:dry`, `/refactor:solid`
 
-**Pre-installed Commands**:
-
-- `/test` - Generate comprehensive unit tests for components
-- `/review` - Perform thorough code reviews with suggestions
-- `/refactor:dry` - Apply DRY (Don't Repeat Yourself) principle
-- `/refactor:solid` - Apply SOLID design principles
+> **Full documentation**: See the [Custom Commands Guide](docs/custom-commands.md) for frontmatter reference, auto-injection, resources, namespaces, and more.
 
 ## Features
 
@@ -846,10 +905,11 @@ Generate comprehensive unit tests for {{component}}. Include:
 ### Custom Command System
 
 - **Markdown-based commands**: Define reusable prompts in `.nanocoder/commands/`
+- **AI-assisted creation**: `/commands create <name>` scaffolds a command and helps you write it
 - **Template variables**: Use `{{parameter}}` syntax for dynamic content
-- **Namespace organization**: Organize commands in folders (e.g., `refactor/dry.md`)
-- **Autocomplete support**: Tab completion for command discovery
-- **Rich metadata**: YAML frontmatter for descriptions, aliases, and parameters
+- **Auto-injection**: Commands with tags/triggers are automatically injected into context when relevant
+- **Namespace organization**: Organize commands in folders (e.g., `refactor/dry.md` becomes `/refactor:dry`)
+- **Rich metadata**: YAML frontmatter for descriptions, aliases, parameters, and [more](docs/custom-commands.md)
 
 ### Enhanced User Experience
 
