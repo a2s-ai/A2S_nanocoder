@@ -7,6 +7,7 @@ import {loadAllProviderConfigs} from '@/config/mcp-config-loader';
 import {loadPreferences} from '@/config/preferences';
 import {TIMEOUT_PROVIDER_CONNECTION_MS} from '@/constants';
 import type {AIProviderConfig, LLMClient} from '@/types/index';
+import {isLocalURL} from '@/utils/url-utils';
 
 // Custom error class for configuration errors that need special UI handling
 export class ConfigurationError extends Error {
@@ -147,7 +148,7 @@ async function testProviderConnection(
 	// Test local servers for connectivity
 	if (
 		providerConfig.config.baseURL &&
-		providerConfig.config.baseURL.includes('localhost')
+		isLocalURL(providerConfig.config.baseURL)
 	) {
 		try {
 			await fetch(providerConfig.config.baseURL, {
@@ -186,7 +187,9 @@ async function testProviderConnection(
 	// Require API key for other hosted providers
 	if (
 		!providerConfig.config.apiKey &&
-		!providerConfig.config.baseURL?.includes('localhost')
+		!(
+			providerConfig.config.baseURL && isLocalURL(providerConfig.config.baseURL)
+		)
 	) {
 		throw new Error('API key required for hosted providers');
 	}
