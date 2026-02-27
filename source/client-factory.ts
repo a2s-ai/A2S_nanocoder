@@ -1,6 +1,7 @@
 import {existsSync} from 'fs';
 import {join} from 'path';
 import {AISDKClient} from '@/ai-sdk-client';
+import {loadCopilotCredential} from '@/config/copilot-credentials';
 import {getClosestConfigFile} from '@/config/index';
 import {loadAllProviderConfigs} from '@/config/mcp-config-loader';
 import {loadPreferences} from '@/config/preferences';
@@ -171,7 +172,18 @@ async function testProviderConnection(
 			// Other errors (like HTTP errors) mean the server is responding, so pass
 		}
 	}
-	// Require API key for hosted providers
+	// GitHub Copilot: require stored credential instead of apiKey
+	if (providerConfig.sdkProvider === 'github-copilot') {
+		const credential = loadCopilotCredential(providerConfig.name);
+		if (!credential?.refreshToken) {
+			throw new Error(
+				`No Copilot credentials for "${providerConfig.name}". Type /copilot-login in the chat to log in, or run: nanocoder copilot login (from project: node dist/cli.js copilot login)`,
+			);
+		}
+		return;
+	}
+
+	// Require API key for other hosted providers
 	if (
 		!providerConfig.config.apiKey &&
 		!providerConfig.config.baseURL?.includes('localhost')
