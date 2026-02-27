@@ -204,3 +204,22 @@ test('createProvider google provider works without baseURL', t => {
 
 	t.truthy(provider);
 });
+
+test('createProvider throws when github-copilot has no stored credential', t => {
+	const config: AIProviderConfig = {
+		name: 'GitHub Copilot',
+		type: 'openai',
+		models: ['gpt-4o'],
+		sdkProvider: 'github-copilot',
+		config: {
+			baseURL: 'https://api.githubcopilot.com',
+			apiKey: '',
+		},
+	};
+
+	const agent = new Agent();
+	t.throws(
+		() => createProvider(config, agent),
+		{ message: /No Copilot credentials/ },
+	);
+});

@@ -8,6 +8,8 @@ import {
 	type OpenAICompatibleProvider,
 } from '@ai-sdk/openai-compatible';
 import {type Agent, fetch as undiciFetch} from 'undici';
+import {getCopilotAccessToken, getCopilotBaseUrl} from '@/auth/github-copilot';
+import {loadCopilotCredential} from '@/config/copilot-credentials';
 import type {AIProviderConfig} from '@/types/index';
 import {getLogger} from '@/utils/logging';
 
@@ -50,6 +52,52 @@ export function createProvider(
 
 		return createGoogleGenerativeAI({
 			apiKey: config.apiKey ?? '',
+		});
+	}
+
+	if (sdkProvider === 'github-copilot') {
+		logger.info('Using GitHub Copilot subscription provider', {
+			provider: providerConfig.name,
+		});
+
+		const credential = loadCopilotCredential(providerConfig.name);
+		if (!credential) {
+			throw new Error(
+				`No Copilot credentials for "${providerConfig.name}". Type /copilot-login in the chat to log in, or run: nanocoder copilot login (from project: node dist/cli.js copilot login)`,
+			);
+		}
+
+		const domain = credential.enterpriseUrl ?? 'github.com';
+		const baseURL = config.baseURL?.trim() || getCopilotBaseUrl(domain);
+
+		const copilotFetch = async (
+			input: string | URL | Request,
+			init?: RequestInit,
+		): Promise<Response> => {
+			const {token} = await getCopilotAccessToken(
+				credential.refreshToken,
+				domain,
+			);
+			const headers = new Headers(init?.headers);
+			headers.set('Authorization', `Bearer ${token}`);
+			headers.set('Openai-Intent', 'conversation-edits');
+			headers.set('X-Initiator', 'agent');
+			headers.set('User-Agent', 'GitHubCopilotChat/0.35.0');
+			headers.set('Editor-Plugin-Version', 'copilot-chat/0.35.0');
+			headers.set('Copilot-Integration-Id', 'nanocoder');
+			return undiciFetch(input as string | URL, {
+				...init,
+				headers,
+				dispatcher: undiciAgent,
+			}) as Promise<Response>;
+		};
+
+		return createOpenAICompatible({
+			name: providerConfig.name,
+			baseURL,
+			apiKey: '',
+			fetch: copilotFetch,
+			headers: config.headers ?? {},
 		});
 	}
 
