@@ -1,0 +1,189 @@
+/**
+ * GitHub Copilot subscription auth: device OAuth flow and token refresh.
+ * Uses the same approach as opencode-copilot-auth for compatibility.
+ * @see https://github.com/anomalyco/opencode-copilot-auth
+ */
+
+const GITHUB_COM = 'github.com';
+const CLIENT_ID = 'Iv1.b507a08c87ecfe98';
+
+const COPILOT_HEADERS: Record<string, string> = {
+	'User-Agent': 'GitHubCopilotChat/0.35.0',
+	'Editor-Version': 'vscode/1.107.0',
+	'Editor-Plugin-Version': 'copilot-chat/0.35.0',
+	'Copilot-Integration-Id': 'nanocoder',
+};
+
+function normalizeDomain(url: string): string {
+	return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+export function getCopilotUrls(domain: string): {
+	deviceCodeUrl: string;
+	accessTokenUrl: string;
+	copilotTokenUrl: string;
+} {
+	const base = `https://${normalizeDomain(domain)}`;
+	return {
+		deviceCodeUrl: `${base}/login/device/code`,
+		accessTokenUrl: `${base}/login/oauth/access_token`,
+		copilotTokenUrl:
+			domain === GITHUB_COM
+				? 'https://api.github.com/copilot_internal/v2/token'
+				: `https://api.${normalizeDomain(domain)}/copilot_internal/v2/token`,
+	};
+}
+
+export interface DeviceFlowResult {
+	verificationUri: string;
+	userCode: string;
+	deviceCode: string;
+	interval: number;
+}
+
+/**
+ * Start GitHub device OAuth flow. User must visit verificationUri and enter userCode.
+ */
+export async function startDeviceFlow(
+	domain: string = GITHUB_COM,
+	fetchFn: typeof fetch = fetch,
+): Promise<DeviceFlowResult> {
+	const urls = getCopilotUrls(domain);
+	const res = await fetchFn(urls.deviceCodeUrl, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			'User-Agent': 'GitHubCopilotChat/0.35.0',
+		},
+		body: JSON.stringify({
+			client_id: CLIENT_ID,
+			scope: 'read:user',
+		}),
+	});
+	if (!res.ok) {
+		const text = await res.text();
+		throw new Error(`Device code request failed: ${res.status} ${text}`);
+	}
+	const data = (await res.json()) as {
+		device_code: string;
+		user_code: string;
+		verification_uri: string;
+		interval: number;
+	};
+	return {
+		deviceCode: data.device_code,
+		userCode: data.user_code,
+		verificationUri: data.verification_uri,
+		interval: typeof data.interval === 'number' ? data.interval : 5,
+	};
+}
+
+/**
+ * Poll until user completes device flow; returns refresh token.
+ */
+export async function pollForRefreshToken(
+	deviceCode: string,
+	intervalSeconds: number,
+	domain: string = GITHUB_COM,
+	fetchFn: typeof fetch = fetch,
+): Promise<string> {
+	const urls = getCopilotUrls(domain);
+	const intervalMs = Math.max(intervalSeconds * 1000, 1000);
+
+	// eslint-disable-next-line no-constant-condition
+	while (true) {
+		const res = await fetchFn(urls.accessTokenUrl, {
+			method: 'POST',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+				'User-Agent': 'GitHubCopilotChat/0.35.0',
+			},
+			body: JSON.stringify({
+				client_id: CLIENT_ID,
+				device_code: deviceCode,
+				grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+			}),
+		});
+
+		if (!res.ok) {
+			const text = await res.text();
+			throw new Error(`Token exchange failed: ${res.status} ${text}`);
+		}
+
+		const data = (await res.json()) as {
+			access_token?: string;
+			error?: string;
+		};
+
+		if (data.access_token) {
+			return data.access_token;
+		}
+
+		if (data.error === 'authorization_pending') {
+			await new Promise(r => setTimeout(r, intervalMs));
+			continue;
+		}
+
+		if (data.error === 'expired_token') {
+			throw new Error('Device code expired. Please run login again.');
+		}
+
+		if (data.error) {
+			throw new Error(`Authorization failed: ${data.error}`);
+		}
+
+		await new Promise(r => setTimeout(r, intervalMs));
+	}
+}
+
+export interface CopilotTokenResult {
+	token: string;
+	expiresAt: number;
+}
+
+let cachedToken: {key: string; result: CopilotTokenResult} | null = null;
+
+/**
+ * Get a short-lived access token for the Copilot API using the refresh token.
+ * Caches token until close to expiry (5 min buffer).
+ */
+export async function getCopilotAccessToken(
+	refreshToken: string,
+	domain: string = GITHUB_COM,
+	fetchFn: typeof fetch = fetch,
+): Promise<CopilotTokenResult> {
+	const cacheKey = `${domain}:${refreshToken.slice(0, 8)}`;
+	const now = Date.now();
+	if (cachedToken?.key === cacheKey && cachedToken.result.expiresAt > now) {
+		return cachedToken.result;
+	}
+
+	const urls = getCopilotUrls(domain);
+	const res = await fetchFn(urls.copilotTokenUrl, {
+		headers: {
+			Accept: 'application/json',
+			Authorization: `Bearer ${refreshToken}`,
+			...COPILOT_HEADERS,
+		},
+	});
+
+	if (!res.ok) {
+		const text = await res.text();
+		throw new Error(`Copilot token refresh failed: ${res.status} ${text}`);
+	}
+
+	const data = (await res.json()) as {token: string; expires_at: number};
+	const expiresAt = data.expires_at * 1000 - 5 * 60 * 1000; // 5 min buffer
+	const result: CopilotTokenResult = {token: data.token, expiresAt};
+	cachedToken = {key: cacheKey, result};
+	return result;
+}
+
+export function getCopilotBaseUrl(domain: string): string {
+	if (domain === GITHUB_COM) {
+		return 'https://api.githubcopilot.com';
+	}
+	return `https://copilot-api.${normalizeDomain(domain)}`;
+}
