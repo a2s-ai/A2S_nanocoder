@@ -130,10 +130,14 @@ export const processAssistantResponse = async (
 	const toolCalls = message.tool_calls || null;
 	const fullContent = message.content || '';
 
-	// Parse any tool calls from content for non-tool-calling models
-	const parseResult = parseToolCalls(fullContent);
+	// Only parse text for XML tool calls on the fallback path (non-tool-calling models).
+	// On the native path, response text is just text - no tool calls are embedded in it.
+	const parseResult = result.toolsDisabled
+		? parseToolCalls(fullContent)
+		: {success: true as const, toolCalls: [], cleanedContent: fullContent};
 
 	// Check for malformed tool calls and send error back to model for self-correction
+	// (only happens on the XML fallback path)
 	if (!parseResult.success) {
 		const errorContent = `${parseResult.error}\n\n${parseResult.examples}`;
 
@@ -193,31 +197,13 @@ export const processAssistantResponse = async (
 		);
 	}
 
-	// NEW: Deduplicate parsed calls to prevent "Ghost Echo" effect
-	// Only keep parsed calls that are NOT duplicates of native calls
-	const uniqueParsedCalls = parsedToolCalls.filter(parsedCall => {
-		const isDuplicate = (toolCalls || []).some(nativeCall => {
-			// A. Check Name
-			if (nativeCall.function.name !== parsedCall.function.name) {
-				return false;
-			}
-
-			// B. Check Arguments (using ensureString for safe comparison)
-			const nativeArgs = JSON.stringify(nativeCall.function.arguments);
-			const parsedArgs = JSON.stringify(parsedCall.function.arguments);
-
-			return nativeArgs === parsedArgs;
-		});
-
-		// Keep it only if it is NOT a duplicate
-		return !isDuplicate;
-	});
-
-	// Merge native calls with unique parsed calls
-	const deduplicatedToolCalls = [...(toolCalls || []), ...uniqueParsedCalls];
+	// Combine native tool calls with any parsed from content (XML fallback path)
+	// Native and parsed are mutually exclusive: native comes from tool-calling models,
+	// parsed comes from non-tool-calling models using XML in text
+	const allToolCalls = [...(toolCalls || []), ...parsedToolCalls];
 
 	const {validToolCalls, errorResults} = filterValidToolCalls(
-		deduplicatedToolCalls,
+		allToolCalls,
 		toolManager,
 	);
 

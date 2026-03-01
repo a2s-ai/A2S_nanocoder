@@ -152,6 +152,9 @@ export interface LLMChatResponse {
 	// Auto-executed messages (assistant + tool results) from AI SDK multi-step execution
 	// These need to be added to message history for proper context tracking
 	autoExecutedMessages?: Message[];
+	// Whether native tools were disabled for this request (XML fallback path)
+	// When true, the conversation loop should parse response text for XML tool calls
+	toolsDisabled?: boolean;
 }
 
 export interface StreamCallbacks {

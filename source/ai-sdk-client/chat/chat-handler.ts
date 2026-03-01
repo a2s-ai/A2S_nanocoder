@@ -39,7 +39,6 @@ import {
 	createOnStepFinishHandler,
 	createPrepareStepHandler,
 } from './streaming-handler.js';
-import {processXMLToolCalls} from './tool-processor.js';
 
 export interface ChatHandlerParams {
 	model: LanguageModel;
@@ -241,13 +240,7 @@ export async function handleChat(
 				}
 			}
 
-			// Check for XML tool calls if no native ones
-			let content = fullText;
-			const xmlResult = await processXMLToolCalls(content, tools, callbacks);
-			if (xmlResult.toolCalls.length > 0) {
-				toolCalls.push(...xmlResult.toolCalls);
-				content = xmlResult.cleanedContent;
-			}
+			const content = fullText;
 
 			// Calculate performance metrics
 			const finalMetrics = endMetrics(metrics);
@@ -279,6 +272,8 @@ export async function handleChat(
 				// Include auto-executed messages so they can be added to message history
 				autoExecutedMessages:
 					autoExecutedMessages.length > 0 ? autoExecutedMessages : undefined,
+				// Signal to conversation loop whether XML fallback parsing is needed
+				toolsDisabled: shouldDisableTools,
 			};
 		} catch (error) {
 			// Calculate performance metrics even for errors
