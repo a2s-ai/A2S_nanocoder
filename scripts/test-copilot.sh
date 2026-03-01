@@ -8,11 +8,11 @@ set -e
 echo "Testing GitHub Copilot Integration"
 
 echo "Building CLI..."
-npm run build >/dev/null 2>&1
+pnpm run build >/dev/null 2>&1
 
 # Test 1: Command registration (dist commands export)
 echo "Test 1: Verifying copilot-login command is registered"
-node -e "
+node --input-type=module -e "
   import {copilotLoginCommand} from './dist/commands/index.js';
   if (copilotLoginCommand && copilotLoginCommand.name === 'copilot-login') {
     console.log('✓ copilot-login command registered');
@@ -24,7 +24,7 @@ node -e "
 
 # Test 2: Provider template exists (dist provider templates)
 echo "Test 2: Verifying GitHub Copilot provider template"
-node -e "
+node --input-type=module -e "
   import {PROVIDER_TEMPLATES} from './dist/wizards/templates/provider-templates.js';
   const hasCopilot = PROVIDER_TEMPLATES.some(t => t.name === 'GitHub Copilot');
   if (hasCopilot) {
@@ -43,7 +43,7 @@ export XDG_CONFIG_HOME="$TEMP_CONFIG"
 
 # Test saving and loading credential
 echo "Testing credential save/load..."
-node -e "
+node --input-type=module -e "
   import {saveCopilotCredential, loadCopilotCredential} from './dist/config/copilot-credentials.js';
   saveCopilotCredential('GitHub Copilot', 'test-token-123');
   const cred = loadCopilotCredential('GitHub Copilot');

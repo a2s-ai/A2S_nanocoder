@@ -95,7 +95,7 @@ export function createProvider(
 		return createOpenAICompatible({
 			name: providerConfig.name,
 			baseURL,
-			apiKey: '',
+			apiKey: 'dummy-key',
 			fetch: copilotFetch,
 			headers: config.headers ?? {},
 		});

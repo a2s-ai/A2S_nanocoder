@@ -75,7 +75,7 @@ if (args[0] === 'copilot' && args[1] === 'login') {
 	const providerName = args[2]?.trim() || 'GitHub Copilot';
 	(async () => {
 		try {
-			const {pollForRefreshToken, startDeviceFlow} = await import(
+			const {pollForOAuthToken, startDeviceFlow} = await import(
 				'@/auth/github-copilot'
 			);
 			const {saveCopilotCredential} = await import(
@@ -93,11 +93,11 @@ if (args[0] === 'copilot' && args[1] === 'login') {
 			console.log('     ' + flow.userCode);
 			console.log('');
 			console.log('Waiting for you to complete login...');
-			const refreshToken = await pollForRefreshToken(
+			const oauthToken = await pollForOAuthToken(
 				flow.deviceCode,
 				flow.interval,
 			);
-			saveCopilotCredential(providerName, refreshToken);
+			saveCopilotCredential(providerName, oauthToken);
 			console.log('\nLogged in. Credential saved for "' + providerName + '".');
 			process.exit(0);
 		} catch (err) {

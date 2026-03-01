@@ -1,7 +1,7 @@
 import {Box, Text, useInput} from 'ink';
 import Spinner from 'ink-spinner';
 import {useEffect, useState} from 'react';
-import {pollForRefreshToken, startDeviceFlow} from '@/auth/github-copilot';
+import {pollForOAuthToken, startDeviceFlow} from '@/auth/github-copilot';
 import {saveCopilotCredential} from '@/config/copilot-credentials';
 import {colors} from '@/config/index';
 
@@ -35,12 +35,12 @@ export function CopilotLogin({
 				await new Promise(r => setTimeout(r, 500));
 				if (cancelled) return;
 				setStatus('polling');
-				const refreshToken = await pollForRefreshToken(
+				const oauthToken = await pollForOAuthToken(
 					flow.deviceCode,
 					flow.interval,
 				);
 				if (cancelled) return;
-				saveCopilotCredential(providerName, refreshToken);
+				saveCopilotCredential(providerName, oauthToken);
 				setStatus('done');
 				onDone?.();
 			} catch (err) {

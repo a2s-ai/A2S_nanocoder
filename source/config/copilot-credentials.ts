@@ -1,5 +1,8 @@
 /**
- * User-level storage for GitHub Copilot refresh tokens.
+ * User-level storage for GitHub Copilot credentials.
+ * The stored token is the GitHub OAuth access token from the device flow
+ * (used to obtain short-lived Copilot API tokens). It is stored under the key
+ * "refreshToken" in copilot-credentials.json for backward compatibility.
  * Stored under config path (e.g. ~/.config/nanocoder/) so they are not in project config.
  */
 
@@ -10,6 +13,7 @@ import {getConfigPath} from '@/config/paths';
 const FILENAME = 'copilot-credentials.json';
 
 export interface CopilotCredential {
+	/** GitHub OAuth access token from device flow (stored as "refreshToken" in JSON). */
 	refreshToken: string;
 	enterpriseUrl?: string;
 }
@@ -42,8 +46,11 @@ function writeStore(store: CopilotCredentialsStore): void {
 	if (!existsSync(dir)) {
 		mkdirSync(dir, {recursive: true});
 	}
-	const path = getCredentialsPath();
-	writeFileSync(path, JSON.stringify(store, null, 2), 'utf-8');
+	const filePath = getCredentialsPath();
+	writeFileSync(filePath, JSON.stringify(store, null, 2), {
+		encoding: 'utf-8',
+		mode: 0o600,
+	});
 }
 
 /**
@@ -65,7 +72,8 @@ export function loadCopilotCredential(
 }
 
 /**
- * Save Copilot refresh token for a provider name.
+ * Save GitHub OAuth token (from device flow) for a provider name.
+ * Stored under the key "refreshToken" in copilot-credentials.json.
  */
 export function saveCopilotCredential(
 	providerName: string,

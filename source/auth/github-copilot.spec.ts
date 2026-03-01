@@ -25,18 +25,33 @@ test('getCopilotBaseUrl returns correct base URL', t => {
 });
 
 test('getCopilotAccessToken uses caching', async t => {
-  // Mock fetch function
-  const mockFetch = async () => ({
-    ok: true,
-    json: async () => ({ token: 'test-token', expires_at: Math.floor(Date.now()/1000) + 3600 }),
-  }) as any;
+  let fetchCallCount = 0;
+  const mockFetch = async () => {
+    fetchCallCount += 1;
+    return {
+      ok: true,
+      json: async () => ({
+        token: 'test-token',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    } as Response;
+  };
 
-  // First call
-  const result1 = await getCopilotAccessToken('refresh-123', 'github.com', mockFetch as any);
+  const githubOAuthToken = `cache-test-${Date.now()}`;
+  const result1 = await getCopilotAccessToken(
+    githubOAuthToken,
+    'github.com',
+    mockFetch as typeof fetch,
+  );
   t.truthy(result1.token);
   t.truthy(result1.expiresAt);
 
-  // Second call should use cache
-  const result2 = await getCopilotAccessToken('refresh-123', 'github.com', mockFetch as any);
-  t.is(result1.token, result2.token);
+  const result2 = await getCopilotAccessToken(
+    githubOAuthToken,
+    'github.com',
+    mockFetch as typeof fetch,
+  );
+
+  t.is(fetchCallCount, 1, 'fetch must be called only once; second call should use cache');
+  t.is(result1, result2, 'second call must return the same cached object reference');
 });

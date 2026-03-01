@@ -80,9 +80,11 @@ export async function startDeviceFlow(
 }
 
 /**
- * Poll until user completes device flow; returns refresh token.
+ * Poll until user completes device flow; returns the GitHub OAuth access token
+ * (the `access_token` from the response). This token is stored as the credential
+ * and used to obtain short-lived Copilot API tokens via getCopilotAccessToken.
  */
-export async function pollForRefreshToken(
+export async function pollForOAuthToken(
 	deviceCode: string,
 	intervalSeconds: number,
 	domain: string = GITHUB_COM,
@@ -146,15 +148,15 @@ export interface CopilotTokenResult {
 let cachedToken: {key: string; result: CopilotTokenResult} | null = null;
 
 /**
- * Get a short-lived access token for the Copilot API using the refresh token.
- * Caches token until close to expiry (5 min buffer).
+ * Get a short-lived access token for the Copilot API using the stored GitHub OAuth
+ * token (from device flow). Caches the result until close to expiry (5 min buffer).
  */
 export async function getCopilotAccessToken(
-	refreshToken: string,
+	githubOAuthToken: string,
 	domain: string = GITHUB_COM,
 	fetchFn: typeof fetch = fetch,
 ): Promise<CopilotTokenResult> {
-	const cacheKey = `${domain}:${refreshToken.slice(0, 8)}`;
+	const cacheKey = `${domain}:${githubOAuthToken.slice(0, 8)}`;
 	const now = Date.now();
 	if (cachedToken?.key === cacheKey && cachedToken.result.expiresAt > now) {
 		return cachedToken.result;
@@ -164,7 +166,7 @@ export async function getCopilotAccessToken(
 	const res = await fetchFn(urls.copilotTokenUrl, {
 		headers: {
 			Accept: 'application/json',
-			Authorization: `Bearer ${refreshToken}`,
+			Authorization: `Bearer ${githubOAuthToken}`,
 			...COPILOT_HEADERS,
 		},
 	});
