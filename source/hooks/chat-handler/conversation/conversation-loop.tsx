@@ -49,6 +49,14 @@ interface ProcessAssistantResponseParams {
 	conversationStartTime?: number;
 }
 
+// Module-level flag: show XML fallback notice only once per process lifetime.
+let hasShownFallbackNotice = false;
+
+/** Reset the fallback notice flag (for testing). */
+export const resetFallbackNotice = () => {
+	hasShownFallbackNotice = false;
+};
+
 /**
  * Main conversation loop that processes assistant responses and handles tool calls.
  * This function orchestrates the entire conversation flow including:
@@ -148,6 +156,18 @@ export const processAssistantResponse = async (
 	const parseResult = result.toolsDisabled
 		? parseToolCalls(fullContent)
 		: {success: true as const, toolCalls: [], cleanedContent: fullContent};
+
+	// Notify the user once per session when the XML fallback path is active
+	if (result.toolsDisabled && !hasShownFallbackNotice) {
+		hasShownFallbackNotice = true;
+		addToChatQueue(
+			<InfoMessage
+				key={`xml-fallback-notice-${getNextComponentKey()}`}
+				message="Model does not support native tool calling. Using XML fallback."
+				hideBox={true}
+			/>,
+		);
+	}
 
 	// Check for malformed tool calls and send error back to model for self-correction
 	// (only happens on the XML fallback path)
