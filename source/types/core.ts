@@ -155,6 +155,12 @@ export interface LLMChatResponse {
 	// Whether native tools were disabled for this request (XML fallback path)
 	// When true, the conversation loop should parse response text for XML tool calls
 	toolsDisabled?: boolean;
+	// Tool calls that the AI SDK identified as needing approval (needsApproval: true)
+	// These were NOT auto-executed and require user confirmation
+	approvalRequests?: Array<{
+		toolCallId: string;
+		toolName: string;
+	}>;
 }
 
 export interface StreamCallbacks {
@@ -162,6 +168,15 @@ export interface StreamCallbacks {
 	onToolCall?: (toolCall: ToolCall) => void;
 	onToolExecuted?: (toolCall: ToolCall, result: string) => void;
 	onFinish?: () => void;
+}
+
+/**
+ * Non-interactive mode overrides for tool approval.
+ * When nonInteractiveMode is true, tools in the allowList bypass approval.
+ */
+export interface ModeOverrides {
+	nonInteractiveMode: boolean;
+	nonInteractiveAlwaysAllow: string[];
 }
 
 export interface LLMClient {
@@ -174,6 +189,7 @@ export interface LLMClient {
 		tools: Record<string, AISDKCoreTool>,
 		callbacks: StreamCallbacks,
 		signal?: AbortSignal,
+		modeOverrides?: ModeOverrides,
 	): Promise<LLMChatResponse>;
 	clearContext(): Promise<void>;
 }
