@@ -13,6 +13,7 @@ import {
 	writeFileSync,
 } from 'fs';
 import {join} from 'path';
+import {clearCopilotTokenCache} from '@/auth/github-copilot';
 import {getConfigPath} from '@/config/paths';
 
 const FILENAME = 'copilot-credentials.json';
@@ -103,5 +104,6 @@ export function removeCopilotCredential(providerName: string): void {
 	if (providerName in store) {
 		delete store[providerName];
 		writeStore(store);
+		clearCopilotTokenCache();
 	}
 }

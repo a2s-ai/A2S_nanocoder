@@ -49,8 +49,9 @@ export interface DeviceFlowResult {
 
 /**
  * Start GitHub device OAuth flow. User must visit verificationUri and enter userCode.
+ * @internal Used by runCopilotLoginFlow.
  */
-export async function startDeviceFlow(
+async function startDeviceFlow(
 	domain: string = GITHUB_COM,
 	fetchFn: typeof fetch = fetch,
 ): Promise<DeviceFlowResult> {
@@ -89,10 +90,11 @@ export async function startDeviceFlow(
  * Poll until user completes device flow; returns the GitHub OAuth access token
  * (the `access_token` from the response). This token is stored as the credential
  * and used to obtain short-lived Copilot API tokens via getCopilotAccessToken.
+ * @internal Used by runCopilotLoginFlow.
  */
 const POLL_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-export async function pollForOAuthToken(
+async function pollForOAuthToken(
 	deviceCode: string,
 	intervalSeconds: number,
 	domain: string = GITHUB_COM,
