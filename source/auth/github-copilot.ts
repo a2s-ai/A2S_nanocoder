@@ -7,8 +7,6 @@
  * dependency; changing it may break device flow compatibility.
  */
 
-import {createHash} from 'node:crypto';
-
 const GITHUB_COM = 'github.com';
 const CLIENT_ID = 'Iv1.b507a08c87ecfe98';
 
@@ -166,13 +164,11 @@ let cachedToken: {key: string; result: CopilotTokenResult} | null = null;
 /**
  * Get a short-lived access token for the Copilot API using the stored GitHub OAuth
  * token (from device flow). Caches the result until close to expiry (5 min buffer).
+ * Cache key uses full token so different tokens never share an entry; key is only
+ * used in-process for lookup, not stored or logged.
  */
 function tokenCacheKey(githubOAuthToken: string, domain: string): string {
-	const hash = createHash('sha256')
-		.update(githubOAuthToken)
-		.digest('hex')
-		.slice(0, 32);
-	return `${domain}:${hash}`;
+	return `${domain}:${githubOAuthToken}`;
 }
 
 /**
