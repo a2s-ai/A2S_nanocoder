@@ -75,29 +75,22 @@ if (args[0] === 'copilot' && args[1] === 'login') {
 	const providerName = args[2]?.trim() || 'GitHub Copilot';
 	(async () => {
 		try {
-			const {pollForOAuthToken, startDeviceFlow} = await import(
-				'@/auth/github-copilot'
-			);
-			const {saveCopilotCredential} = await import(
-				'@/config/copilot-credentials'
-			);
+			const {runCopilotLoginFlow} = await import('@/auth/github-copilot');
 			console.log('Starting GitHub Copilot login...');
-			const flow = await startDeviceFlow();
-			console.log('');
-			console.log('  1. Open this URL in your browser:');
-			console.log('');
-			console.log('     ' + flow.verificationUri);
-			console.log('');
-			console.log('  2. Enter this code when prompted:');
-			console.log('');
-			console.log('     ' + flow.userCode);
-			console.log('');
-			console.log('Waiting for you to complete login...');
-			const oauthToken = await pollForOAuthToken(
-				flow.deviceCode,
-				flow.interval,
-			);
-			saveCopilotCredential(providerName, oauthToken);
+			await runCopilotLoginFlow(providerName, {
+				onShowCode(verificationUri, userCode) {
+					console.log('');
+					console.log('  1. Open this URL in your browser:');
+					console.log('');
+					console.log('     ' + verificationUri);
+					console.log('');
+					console.log('  2. Enter this code when prompted:');
+					console.log('');
+					console.log('     ' + userCode);
+					console.log('');
+					console.log('Waiting for you to complete login...');
+				},
+			});
 			console.log('\nLogged in. Credential saved for "' + providerName + '".');
 			process.exit(0);
 		} catch (err) {

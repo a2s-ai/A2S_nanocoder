@@ -42,7 +42,7 @@ test.serial('saveCopilotCredential saves credential correctly', t => {
 
 	const credential = loadCopilotCredential('TestProvider');
 	t.truthy(credential);
-	t.is(credential!.refreshToken, 'test-refresh-token');
+	t.is(credential!.oauthToken, 'test-refresh-token');
 });
 
 test.serial('loadCopilotCredential returns null for non-existent provider', t => {
@@ -69,6 +69,6 @@ test.serial('saveCopilotCredential handles enterprise URLs', t => {
 
 	const credential = loadCopilotCredential('EnterpriseProvider');
 	t.truthy(credential);
-	t.is(credential!.refreshToken, 'enterprise-token');
+	t.is(credential!.oauthToken, 'enterprise-token');
 	t.is(credential!.enterpriseUrl, 'github.enterprise.com');
 });

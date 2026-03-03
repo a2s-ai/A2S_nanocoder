@@ -208,7 +208,7 @@ test('createProvider google provider works without baseURL', t => {
 	t.truthy(provider);
 });
 
-test('createProvider throws when github-copilot has no stored credential', t => {
+test.serial('createProvider throws when github-copilot has no stored credential', t => {
 	const config: AIProviderConfig = {
 		name: 'GitHub Copilot',
 		type: 'openai',

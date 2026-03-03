@@ -1,8 +1,7 @@
 import {Box, Text, useInput} from 'ink';
 import Spinner from 'ink-spinner';
 import {useEffect, useState} from 'react';
-import {pollForOAuthToken, startDeviceFlow} from '@/auth/github-copilot';
-import {saveCopilotCredential} from '@/config/copilot-credentials';
+import {runCopilotLoginFlow} from '@/auth/github-copilot';
 import {colors} from '@/config/index';
 
 const DEFAULT_PROVIDER_NAME = 'GitHub Copilot';
@@ -26,21 +25,19 @@ export function CopilotLogin({
 
 		(async () => {
 			try {
-				const flow = await startDeviceFlow();
+				await runCopilotLoginFlow(providerName, {
+					onShowCode(uri, code) {
+						if (cancelled) return;
+						setVerificationUri(uri);
+						setUserCode(code);
+						setStatus('visit');
+					},
+					onPollingStart() {
+						if (!cancelled) setStatus('polling');
+					},
+					delayBeforePollMs: 500,
+				});
 				if (cancelled) return;
-				setVerificationUri(flow.verificationUri);
-				setUserCode(flow.userCode);
-				setStatus('visit');
-				// Start polling after a short delay so user sees the message
-				await new Promise(r => setTimeout(r, 500));
-				if (cancelled) return;
-				setStatus('polling');
-				const oauthToken = await pollForOAuthToken(
-					flow.deviceCode,
-					flow.interval,
-				);
-				if (cancelled) return;
-				saveCopilotCredential(providerName, oauthToken);
 				setStatus('done');
 				onDone?.();
 			} catch (err) {

@@ -1,20 +1,30 @@
 /**
  * User-level storage for GitHub Copilot credentials.
  * The stored token is the GitHub OAuth access token from the device flow
- * (used to obtain short-lived Copilot API tokens). It is stored under the key
- * "refreshToken" in copilot-credentials.json for backward compatibility.
- * Stored under config path (e.g. ~/.config/nanocoder/) so they are not in project config.
+ * (used to obtain short-lived Copilot API tokens). Stored under config path
+ * (e.g. ~/.config/nanocoder/) so they are not in project config.
  */
 
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'fs';
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from 'fs';
 import {join} from 'path';
 import {getConfigPath} from '@/config/paths';
 
 const FILENAME = 'copilot-credentials.json';
 
+/** Shared message when no Copilot credential is found (used by provider-factory and client-factory). */
+export function getCopilotNoCredentialsMessage(providerName: string): string {
+	return `No Copilot credentials for "${providerName}". Type /copilot-login in the chat to log in, or run: nanocoder copilot login (from project: node dist/cli.js copilot login)`;
+}
+
 export interface CopilotCredential {
-	/** GitHub OAuth access token from device flow (stored as "refreshToken" in JSON). */
-	refreshToken: string;
+	/** GitHub OAuth access token from device flow. */
+	oauthToken: string;
 	enterpriseUrl?: string;
 }
 
@@ -51,6 +61,7 @@ function writeStore(store: CopilotCredentialsStore): void {
 		encoding: 'utf-8',
 		mode: 0o600,
 	});
+	chmodSync(filePath, 0o600);
 }
 
 /**
@@ -61,11 +72,11 @@ export function loadCopilotCredential(
 ): CopilotCredential | null {
 	const store = loadStore();
 	const entry = store[providerName];
-	if (!entry || typeof entry.refreshToken !== 'string') {
+	if (!entry || typeof entry.oauthToken !== 'string') {
 		return null;
 	}
 	return {
-		refreshToken: entry.refreshToken,
+		oauthToken: entry.oauthToken,
 		enterpriseUrl:
 			typeof entry.enterpriseUrl === 'string' ? entry.enterpriseUrl : undefined,
 	};
@@ -73,15 +84,14 @@ export function loadCopilotCredential(
 
 /**
  * Save GitHub OAuth token (from device flow) for a provider name.
- * Stored under the key "refreshToken" in copilot-credentials.json.
  */
 export function saveCopilotCredential(
 	providerName: string,
-	refreshToken: string,
+	oauthToken: string,
 	enterpriseUrl?: string,
 ): void {
 	const store = loadStore();
-	store[providerName] = {refreshToken, enterpriseUrl};
+	store[providerName] = {oauthToken, enterpriseUrl};
 	writeStore(store);
 }
 

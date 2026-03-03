@@ -8,8 +8,15 @@ import {
 	type OpenAICompatibleProvider,
 } from '@ai-sdk/openai-compatible';
 import {type Agent, fetch as undiciFetch} from 'undici';
-import {getCopilotAccessToken, getCopilotBaseUrl} from '@/auth/github-copilot';
-import {loadCopilotCredential} from '@/config/copilot-credentials';
+import {
+	COPILOT_HEADERS,
+	getCopilotAccessToken,
+	getCopilotBaseUrl,
+} from '@/auth/github-copilot';
+import {
+	getCopilotNoCredentialsMessage,
+	loadCopilotCredential,
+} from '@/config/copilot-credentials';
 import type {AIProviderConfig} from '@/types/index';
 import {getLogger} from '@/utils/logging';
 
@@ -62,9 +69,7 @@ export function createProvider(
 
 		const credential = loadCopilotCredential(providerConfig.name);
 		if (!credential) {
-			throw new Error(
-				`No Copilot credentials for "${providerConfig.name}". Type /copilot-login in the chat to log in, or run: nanocoder copilot login (from project: node dist/cli.js copilot login)`,
-			);
+			throw new Error(getCopilotNoCredentialsMessage(providerConfig.name));
 		}
 
 		const domain = credential.enterpriseUrl ?? 'github.com';
@@ -75,16 +80,16 @@ export function createProvider(
 			init?: RequestInit,
 		): Promise<Response> => {
 			const {token} = await getCopilotAccessToken(
-				credential.refreshToken,
+				credential.oauthToken,
 				domain,
 			);
 			const headers = new Headers(init?.headers);
 			headers.set('Authorization', `Bearer ${token}`);
 			headers.set('Openai-Intent', 'conversation-edits');
 			headers.set('X-Initiator', 'agent');
-			headers.set('User-Agent', 'GitHubCopilotChat/0.35.0');
-			headers.set('Editor-Plugin-Version', 'copilot-chat/0.35.0');
-			headers.set('Copilot-Integration-Id', 'nanocoder');
+			for (const [k, v] of Object.entries(COPILOT_HEADERS)) {
+				headers.set(k, v);
+			}
 			return undiciFetch(input as string | URL, {
 				...init,
 				headers,
@@ -95,6 +100,7 @@ export function createProvider(
 		return createOpenAICompatible({
 			name: providerConfig.name,
 			baseURL,
+			// Non-empty placeholder; auth is via custom fetch Authorization header
 			apiKey: 'dummy-key',
 			fetch: copilotFetch,
 			headers: config.headers ?? {},
