@@ -481,7 +481,7 @@ function SettingsNanocoderShapePanel({
 			option => option.value === originalShape,
 		);
 		return index >= 0 ? index : 0;
-	}, [originalShape]);
+	}, [originalShape, shapeOptions.findIndex]);
 
 	const handleSelect = (item: {label: string; value: NanocoderShape}) => {
 		updateNanocoderShape(item.value);

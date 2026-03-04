@@ -12,6 +12,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const isWindows = platform === 'win32';
 
 /**
+ * List of supported VS Code CLI executables (including forks)
+ */
+const SUPPORTED_CLIS = [
+	'code',
+	'code-insiders',
+	'cursor',
+	'codium',
+	'vscodium',
+	'windsurf',
+	'trae',
+	'positron',
+];
+
+/**
  * Get the path to the bundled VSIX file
  */
 export function getVsixPath(): string {
@@ -32,97 +46,136 @@ export function getVsixPath(): string {
 }
 
 /**
- * Check if the VS Code CLI is available
+ * Get all available VS Code (or fork) CLIs in the PATH
+ */
+export function getAvailableClis(): string[] {
+	return SUPPORTED_CLIS.filter(cli => {
+		try {
+			execSync(`${cli} --version`, {
+				stdio: 'ignore',
+				...(isWindows && {shell: 'cmd.exe'}),
+			});
+			return true;
+		} catch {
+			return false;
+		}
+	});
+}
+
+/**
+ * Check if any VS Code CLI is available
  */
 export function isVSCodeCliAvailable(): boolean {
-	try {
-		execSync('code --version', {
-			stdio: 'ignore',
-			...(isWindows && {shell: 'cmd.exe'}),
-		});
-		return true;
-	} catch {
-		return false;
-	}
+	return getAvailableClis().length > 0;
 }
 
 /**
- * Check if the nanocoder VS Code extension is installed
+ * Check if the nanocoder VS Code extension is installed in any available VS Code flavor
  */
 export function isExtensionInstalled(): boolean {
-	try {
-		const output = execSync('code --list-extensions', {
-			encoding: 'utf-8',
-			stdio: ['pipe', 'pipe', 'ignore'],
-			...(isWindows && {shell: 'cmd.exe'}),
-		});
-		return output.toLowerCase().includes('nanocollective.nanocoder-vscode');
-	} catch {
+	const availableClis = getAvailableClis();
+
+	if (availableClis.length === 0) {
 		return false;
 	}
+
+	for (const cli of availableClis) {
+		try {
+			const output = execSync(`${cli} --list-extensions`, {
+				encoding: 'utf-8',
+				stdio: ['pipe', 'pipe', 'ignore'],
+				...(isWindows && {shell: 'cmd.exe'}),
+			});
+
+			if (output.toLowerCase().includes('nanocollective.nanocoder-vscode')) {
+				return true;
+			}
+		} catch {
+			// Skip CLIs that fail
+			continue;
+		}
+	}
+
+	return false;
 }
 
 /**
- * Install the VS Code extension from the bundled VSIX
+ * Install the VS Code extension to a specific CLI
+ */
+async function installToCli(cli: string, vsixPath: string): Promise<boolean> {
+	return new Promise(resolve => {
+		const child = spawn(cli, ['--install-extension', vsixPath], {
+			stdio: ['ignore', 'pipe', 'pipe'],
+			...(isWindows && {shell: 'cmd.exe'}),
+		});
+
+		child.on('close', code => {
+			resolve(code === 0);
+		});
+
+		child.on('error', () => {
+			resolve(false);
+		});
+	});
+}
+
+/**
+ * Install the VS Code extension from the bundled VSIX to all available VS Code flavors
  * Returns a promise that resolves when installation is complete
  */
 export async function installExtension(): Promise<{
 	success: boolean;
 	message: string;
 }> {
-	if (!isVSCodeCliAvailable()) {
+	const availableClis = getAvailableClis();
+
+	if (availableClis.length === 0) {
 		return {
 			success: false,
 			message:
-				'VS Code CLI not found. Please install the "code" command:\n' +
-				'  1. Open VS Code\n' +
+				'VS Code CLI not found. Please install the "code" command (or a supported fork like Cursor, VSCodium, Windsurf, or Trae):\n' +
+				'  1. Open VS Code or your preferred editor\n' +
 				'  2. Press Cmd+Shift+P (Mac) or Ctrl+Shift+P (Windows/Linux)\n' +
-				'  3. Type "Shell Command: Install \'code\' command in PATH"',
+				"  3. Type \"Shell Command: Install \'code\' command in PATH\" (replace \'code\' with your editor\'s CLI name)",
 		};
 	}
 
 	try {
 		const vsixPath = getVsixPath();
+		const results = await Promise.all(
+			availableClis.map(async cli => ({
+				cli,
+				success: await installToCli(cli, vsixPath),
+			})),
+		);
 
-		return new Promise(resolve => {
-			const child = spawn('code', ['--install-extension', vsixPath], {
-				stdio: ['ignore', 'pipe', 'pipe'],
-				...(isWindows && {shell: 'cmd.exe'}), // Required on Windows to find code.cmd
-			});
+		const successful = results.filter(r => r.success);
 
-			let stdout = '';
-			let stderr = '';
+		if (successful.length === 0) {
+			return {
+				success: false,
+				message: `Failed to install extension to any available VS Code flavor (${availableClis.join(
+					', ',
+				)}).`,
+			};
+		}
 
-			child.stdout?.on('data', (data: Buffer) => {
-				stdout += data.toString();
-			});
+		const successMessage =
+			successful.length === availableClis.length
+				? `VS Code extension installed successfully for all editors (${successful
+						.map(r => r.cli)
+						.join(', ')})!`
+				: `VS Code extension installed for: ${successful
+						.map(r => r.cli)
+						.join(', ')}. (Failed for: ${results
+						.filter(r => !r.success)
+						.map(r => r.cli)
+						.join(', ')})`;
 
-			child.stderr?.on('data', (data: Buffer) => {
-				stderr += data.toString();
-			});
-
-			child.on('close', code => {
-				if (code === 0) {
-					resolve({
-						success: true,
-						message:
-							'VS Code extension installed successfully! Please reload VS Code to activate it.',
-					});
-				} else {
-					resolve({
-						success: false,
-						message: `Failed to install extension: ${stderr || stdout}`,
-					});
-				}
-			});
-
-			child.on('error', error => {
-				resolve({
-					success: false,
-					message: `Failed to install extension: ${error.message}`,
-				});
-			});
-		});
+		return {
+			success: true,
+			message: `${successMessage} Please reload your editor to activate it.`,
+		};
 	} catch (error) {
 		return {
 			success: false,

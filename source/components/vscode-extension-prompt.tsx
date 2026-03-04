@@ -121,15 +121,24 @@ export function VSCodeExtensionPrompt({
 		return (
 			<Box flexDirection="column" paddingY={1}>
 				<Text color={colors.warning}>
-					VS Code CLI not found. To enable VS Code integration:
+					VS Code CLI (or a fork like Cursor, VSCodium, Windsurf, or Trae) not
+					found.
 				</Text>
+				<Box marginTop={1}>
+					<Text color={colors.text}>To enable VS Code integration:</Text>
+				</Box>
 				<Box marginLeft={2} flexDirection="column" marginTop={1}>
-					<Text color={colors.secondary}>1. Open VS Code</Text>
+					<Text color={colors.secondary}>
+						1. Open VS Code or your preferred editor
+					</Text>
 					<Text color={colors.secondary}>
 						2. Press Cmd+Shift+P (Mac) or Ctrl+Shift+P (Windows/Linux)
 					</Text>
 					<Text color={colors.secondary}>
 						3. Type "Shell Command: Install 'code' command in PATH"
+					</Text>
+					<Text color={colors.secondary}>
+						(replace 'code' with your editor's CLI name, e.g., 'cursor')
 					</Text>
 				</Box>
 				<Box marginTop={1}>
