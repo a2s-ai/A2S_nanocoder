@@ -14,8 +14,8 @@ import {SchedulerView} from '@/components/scheduler-view';
 import SecurityDisclaimer from '@/components/security-disclaimer';
 import type {TitleShape} from '@/components/ui/styled-title';
 import {
-	VSCodeExtensionPrompt,
 	shouldPromptExtensionInstall,
+	VSCodeExtensionPrompt,
 } from '@/components/vscode-extension-prompt';
 import WelcomeMessage from '@/components/welcome-message';
 import {updateSelectedTheme} from '@/config/preferences';

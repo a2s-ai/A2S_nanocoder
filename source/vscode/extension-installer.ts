@@ -190,10 +190,10 @@ export async function installExtension(targetClis?: string[]): Promise<{
 			success: false,
 			message:
 				`No supported VS Code flavor found. Checked: ${checkedList}\n\n` +
-				'Please ensure your editor\'s CLI is in your PATH. To enable it:\n' +
+				"Please ensure your editor's CLI is in your PATH. To enable it:\n" +
 				'  1. Open VS Code or your preferred editor\n' +
 				'  2. Press Cmd+Shift+P (Mac) or Ctrl+Shift+P (Windows/Linux)\n' +
-				"  3. Search for \"Shell Command: Install 'code' command in PATH\"",
+				'  3. Search for "Shell Command: Install \'code\' command in PATH"',
 			results: [],
 		};
 	}
@@ -212,9 +212,7 @@ export async function installExtension(targetClis?: string[]): Promise<{
 		if (successful.length === 0) {
 			return {
 				success: false,
-				message: `Failed to install extension to: ${clisToInstall.join(
-					', ',
-				)}.`,
+				message: `Failed to install extension to: ${clisToInstall.join(', ')}.`,
 				results,
 			};
 		}
