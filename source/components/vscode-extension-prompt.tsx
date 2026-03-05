@@ -77,13 +77,7 @@ export function VSCodeExtensionPrompt({
 
 			setMessage(result.message);
 			if (result.success) {
-				const allSuccessful = result.results.every(r => r.success);
-				if (allSuccessful) {
-					setState('success');
-				} else {
-					// Partial success is still 'success' but with specific messaging
-					setState('success');
-				}
+				setState('success');
 			} else {
 				setState('error');
 				// Auto-continue after showing error
