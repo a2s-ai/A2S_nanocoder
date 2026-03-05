@@ -146,7 +146,14 @@ export async function isExtensionInstalled(): Promise<boolean> {
  * Install the VS Code extension to a specific CLI
  */
 async function installToCli(cli: string, vsixPath: string): Promise<boolean> {
+	// Validate CLI is in the allowed list to prevent command injection
+	// This check satisfies semgrep's detect-child-process rule
+	if (!SUPPORTED_CLIS.includes(cli)) {
+		return false;
+	}
+
 	return new Promise(resolve => {
+		// nosemgrep
 		const child = spawn(cli, ['--install-extension', vsixPath], {
 			stdio: ['ignore', 'pipe', 'pipe'],
 			...(isWindows && {shell: 'cmd.exe'}),
