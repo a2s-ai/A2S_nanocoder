@@ -4,10 +4,10 @@ import React, {useEffect, useState} from 'react';
 import {defaultTheme, getThemeColors} from '@/config/themes';
 import {TIMEOUT_VSCODE_EXTENSION_SKIP_MS} from '@/constants';
 import {
-	type VSCodeStatus,
 	getExtensionStatus,
 	installExtension,
 	isVSCodeCliAvailable,
+	type VSCodeStatus,
 } from '@/vscode/extension-installer';
 
 interface VSCodeExtensionPromptProps {
@@ -237,7 +237,8 @@ export function VSCodeExtensionPrompt({
 				</Text>
 				<Box marginTop={1}>
 					<Text color={colors.text}>
-						The extension enables live diff previews and chat integration.
+						The VS Code extension enables live diff previews when Nanocoder
+						modifies files.
 					</Text>
 				</Box>
 
