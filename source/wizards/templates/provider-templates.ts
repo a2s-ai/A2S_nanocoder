@@ -104,6 +104,39 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		}),
 	},
 	{
+		id: 'mlx-server',
+		name: 'MLX Server',
+		modelsEndpoint: 'openai-compatible',
+		fields: [
+			{
+				name: 'providerName',
+				prompt: 'Provider name',
+				default: 'mlx-server',
+				required: true,
+			},
+			{
+				name: 'baseUrl',
+				prompt: 'Base URL',
+				default: 'http://localhost:8080/v1',
+				validator: urlValidator,
+			},
+			{
+				name: 'model',
+				prompt: 'Model name(s) (comma-separated)',
+				default: '',
+				required: true,
+			},
+		],
+		buildConfig: answers => ({
+			name: answers.providerName || 'mlx-server',
+			baseUrl: answers.baseUrl || 'http://localhost:8080/v1',
+			models: answers.model
+				.split(',')
+				.map(m => m.trim())
+				.filter(Boolean),
+		}),
+	},
+	{
 		id: 'lmstudio',
 		name: 'LM Studio',
 		modelsEndpoint: 'openai-compatible',
@@ -409,6 +442,32 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 				.split(',')
 				.map(m => m.trim())
 				.filter(Boolean),
+		}),
+	},
+	{
+		id: 'github-copilot',
+		name: 'GitHub Copilot',
+		fields: [
+			{
+				name: 'providerName',
+				prompt: 'Provider name',
+				default: 'GitHub Copilot',
+			},
+			{
+				name: 'model',
+				prompt: 'Model name(s) (comma-separated).',
+				default: 'gpt-4.1, gpt-5.3-codex, claude-sonnet-4.6',
+				required: true,
+			},
+		],
+		buildConfig: answers => ({
+			name: answers.providerName || 'GitHub Copilot',
+			baseUrl: 'https://api.githubcopilot.com',
+			models: answers.model
+				.split(',')
+				.map(m => m.trim())
+				.filter(Boolean),
+			sdkProvider: 'github-copilot',
 		}),
 	},
 	{

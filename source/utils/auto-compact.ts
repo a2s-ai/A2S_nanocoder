@@ -1,4 +1,4 @@
-import {getModelContextLimit} from '@/models/index';
+import {getModelContextLimit, getSessionContextLimit} from '@/models/index';
 import {createTokenizer} from '@/tokenization/index';
 import type {CompressionMode} from '@/types/config';
 import type {Message} from '@/types/core';
@@ -115,12 +115,17 @@ export async function performAutoCompact(
 			? autoCompactSessionOverrides.mode
 			: config.mode;
 
-	// Get context limit
+	// Get context limit: session override takes priority
 	let contextLimit: number | null;
-	try {
-		contextLimit = await getModelContextLimit(model);
-	} catch {
-		return null;
+	const sessionLimit = getSessionContextLimit();
+	if (sessionLimit !== null) {
+		contextLimit = sessionLimit;
+	} else {
+		try {
+			contextLimit = await getModelContextLimit(model);
+		} catch {
+			return null;
+		}
 	}
 
 	if (!contextLimit) {
@@ -157,7 +162,7 @@ export async function performAutoCompact(
 		if (config.notifyUser && onNotify) {
 			const reduction = Math.round(result.reductionPercentage);
 			onNotify(
-				`Context at ${Math.round(usagePercentage)}% capacity - auto-compacting...\nContext Compacted: ${result.originalTokenCount.toLocaleString()} tokens → ${result.compressedTokenCount.toLocaleString()} tokens (${reduction}% reduction)`,
+				`Context at ${Math.round(usagePercentage)}% capacity - auto-compacting...\n\nContext Compacted: ${result.originalTokenCount.toLocaleString()} tokens → ${result.compressedTokenCount.toLocaleString()} tokens (${reduction}% reduction)`,
 			);
 		}
 

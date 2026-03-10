@@ -189,3 +189,80 @@ test('commands create - preserves .md extension when present', t => {
 	const safeName = fileName.endsWith('.md') ? fileName : `${fileName}.md`;
 	t.is(safeName, 'my-tool.md');
 });
+
+// Test parseContextLimit — imported from the actual module
+import {parseContextLimit} from './app-util.js';
+
+test('parseContextLimit - plain number', t => {
+	t.is(parseContextLimit('8192'), 8192);
+});
+
+test('parseContextLimit - k suffix lowercase', t => {
+	t.is(parseContextLimit('128k'), 128000);
+});
+
+test('parseContextLimit - K suffix uppercase', t => {
+	t.is(parseContextLimit('128K'), 128000);
+});
+
+test('parseContextLimit - fractional k value', t => {
+	t.is(parseContextLimit('4.5k'), 4500);
+});
+
+test('parseContextLimit - zero returns null', t => {
+	t.is(parseContextLimit('0'), null);
+});
+
+test('parseContextLimit - negative returns null', t => {
+	t.is(parseContextLimit('-5'), null);
+});
+
+test('parseContextLimit - non-numeric returns null', t => {
+	t.is(parseContextLimit('abc'), null);
+});
+
+test('parseContextLimit - just k returns null', t => {
+	t.is(parseContextLimit('k'), null);
+});
+
+test('parseContextLimit - whitespace is trimmed', t => {
+	t.is(parseContextLimit('  8192  '), 8192);
+});
+
+test('parseContextLimit - large value with k suffix', t => {
+	t.is(parseContextLimit('256k'), 256000);
+});
+
+test('parseContextLimit - decimal without k suffix', t => {
+	t.is(parseContextLimit('1024.5'), 1025);
+});
+
+// Test /ide command parsing
+test('ide command parsing - extracts command name correctly', t => {
+	const message = '/ide';
+	const commandName = message.slice(1).split(/\s+/)[0];
+	t.is(commandName, 'ide');
+});
+
+test('ide command parsing - recognized as special command', t => {
+	const SPECIAL_COMMANDS: Record<string, string> = {
+		CLEAR: 'clear',
+		MODEL: 'model',
+		PROVIDER: 'provider',
+		MODEL_DATABASE: 'model-database',
+		SETUP_PROVIDERS: 'setup-providers',
+		SETUP_MCP: 'setup-mcp',
+		SETTINGS: 'settings',
+		STATUS: 'status',
+		CHECKPOINT: 'checkpoint',
+		EXPLORER: 'explorer',
+		IDE: 'ide',
+		SCHEDULE: 'schedule',
+		COMMANDS: 'commands',
+	};
+	const commandName = 'ide';
+	t.is(
+		Object.values(SPECIAL_COMMANDS).includes(commandName),
+		true,
+	);
+});
