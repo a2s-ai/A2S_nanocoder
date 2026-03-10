@@ -8,12 +8,17 @@ const DEFAULT_PROVIDER_NAME = 'GitHub Copilot';
 
 type Status = 'starting' | 'visit' | 'polling' | 'done' | 'error';
 
+export interface CopilotLoginResult {
+	success: boolean;
+	error?: string;
+}
+
 export function CopilotLogin({
 	providerName = DEFAULT_PROVIDER_NAME,
 	onDone,
 }: {
 	providerName?: string;
-	onDone?: () => void;
+	onDone?: (result: CopilotLoginResult) => void;
 }) {
 	const [status, setStatus] = useState<Status>('starting');
 	const [verificationUri, setVerificationUri] = useState('');
@@ -37,9 +42,9 @@ export function CopilotLogin({
 					},
 					delayBeforePollMs: 500,
 				});
-				if (cancelled) return;
-				setStatus('done');
-				onDone?.();
+				if (!cancelled) {
+					setStatus('done');
+				}
 			} catch (err) {
 				if (!cancelled) {
 					setError(err instanceof Error ? err.message : String(err));
@@ -51,12 +56,14 @@ export function CopilotLogin({
 		return () => {
 			cancelled = true;
 		};
-	}, [providerName, onDone]);
+	}, [providerName]);
 
 	// Allow user to dismiss with Enter when done or on error
-	useInput((input, key) => {
-		if (key.return && (status === 'done' || status === 'error')) {
-			onDone?.();
+	useInput((_input, key) => {
+		if (key.return && status === 'done') {
+			onDone?.({success: true});
+		} else if (key.return && status === 'error') {
+			onDone?.({success: false, error: error ?? undefined});
 		}
 	});
 

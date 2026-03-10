@@ -455,9 +455,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 			},
 			{
 				name: 'model',
-				prompt:
-					'Model name(s) (comma-separated). Type /copilot-login in the chat or run "nanocoder copilot login" if not logged in.',
-				default: 'gpt-4o,claude-3-5-sonnet-20241022',
+				prompt: 'Model name(s) (comma-separated).',
+				default: 'gpt-4.1, gpt-5.3-codex, claude-sonnet-4.6',
 				required: true,
 			},
 		],

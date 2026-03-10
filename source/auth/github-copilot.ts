@@ -15,7 +15,7 @@ export const COPILOT_HEADERS: Record<string, string> = {
 	'User-Agent': 'GitHubCopilotChat/0.35.0',
 	'Editor-Version': 'vscode/1.107.0',
 	'Editor-Plugin-Version': 'copilot-chat/0.35.0',
-	'Copilot-Integration-Id': 'nanocoder',
+	'Copilot-Integration-Id': 'vscode-chat',
 };
 
 function normalizeDomain(url: string): string {
@@ -65,10 +65,13 @@ async function startDeviceFlow(
 			client_id: CLIENT_ID,
 			scope: 'read:user',
 		}),
+		signal: AbortSignal.timeout(30_000),
 	});
 	if (!res.ok) {
-		const text = await res.text();
-		throw new Error(`Device code request failed: ${res.status} ${text}`);
+		const body = await res.text();
+		throw new Error(
+			`Device code request failed (POST ${urls.deviceCodeUrl}): HTTP ${res.status} ${res.statusText}\nResponse: ${body}`,
+		);
 	}
 	const data = (await res.json()) as {
 		device_code: string;
@@ -204,8 +207,13 @@ export async function getCopilotAccessToken(
 		throw new Error(`Copilot token refresh failed: ${res.status} ${text}`);
 	}
 
-	const data = (await res.json()) as {token: string; expires_at: number};
-	const expiresAt = data.expires_at * 1000 - 5 * 60 * 1000; // 5 min buffer
+	const data = (await res.json()) as {token?: string; expires_at?: number};
+	if (!data.token || typeof data.token !== 'string') {
+		throw new Error(
+			'Copilot token endpoint returned no token. Your Copilot subscription may not include chat access.',
+		);
+	}
+	const expiresAt = (data.expires_at ?? 0) * 1000 - 5 * 60 * 1000; // 5 min buffer
 	const result: CopilotTokenResult = {token: data.token, expiresAt};
 	cachedToken = {key: cacheKey, result};
 	return result;

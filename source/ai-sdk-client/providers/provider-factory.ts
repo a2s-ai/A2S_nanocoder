@@ -3,6 +3,7 @@ import {
 	createGoogleGenerativeAI,
 	type GoogleGenerativeAIProvider,
 } from '@ai-sdk/google';
+import {createOpenAI, type OpenAIProvider} from '@ai-sdk/openai';
 import {
 	createOpenAICompatible,
 	type OpenAICompatibleProvider,
@@ -23,6 +24,7 @@ import {getLogger} from '@/utils/logging';
 // Union type for supported providers
 export type AIProvider =
 	| OpenAICompatibleProvider<string, string, string, string>
+	| OpenAIProvider
 	| GoogleGenerativeAIProvider
 	| AnthropicProvider;
 
@@ -83,25 +85,49 @@ export function createProvider(
 				credential.oauthToken,
 				domain,
 			);
-			const headers = new Headers(init?.headers);
-			headers.set('Authorization', `Bearer ${token}`);
-			headers.set('Openai-Intent', 'conversation-edits');
-			headers.set('X-Initiator', 'agent');
-			for (const [k, v] of Object.entries(COPILOT_HEADERS)) {
-				headers.set(k, v);
+
+			// Build headers via Headers (case-insensitive) to avoid
+			// duplicate keys when merging SDK lowercase and Copilot mixed-case.
+			const h = new Headers();
+			if (init?.headers) {
+				const src =
+					init.headers instanceof Headers
+						? init.headers
+						: new Headers(
+								init.headers as ConstructorParameters<typeof Headers>[0],
+							);
+				src.forEach((v, k) => {
+					if (k !== 'authorization') {
+						h.set(k, v);
+					}
+				});
 			}
+			for (const [k, v] of Object.entries(COPILOT_HEADERS)) {
+				h.set(k, v);
+			}
+			h.set('Authorization', `Bearer ${token}`);
+			h.set('Openai-Intent', 'conversation-edits');
+			h.set('X-Initiator', 'agent');
+
+			// Convert to plain object for undici
+			const headers: Record<string, string> = {};
+			h.forEach((v, k) => {
+				headers[k] = v;
+			});
+
 			return undiciFetch(input as string | URL, {
-				...init,
+				method: init?.method,
+				body: init?.body,
+				signal: init?.signal,
 				headers,
 				dispatcher: undiciAgent,
 			}) as Promise<Response>;
 		};
 
-		return createOpenAICompatible({
-			name: providerConfig.name,
+		return createOpenAI({
 			baseURL,
-			// Non-empty placeholder; auth is via custom fetch Authorization header
-			apiKey: 'dummy-key',
+			// Empty key — auth is handled entirely by copilotFetch's Authorization header
+			apiKey: '',
 			fetch: copilotFetch,
 			headers: config.headers ?? {},
 		});

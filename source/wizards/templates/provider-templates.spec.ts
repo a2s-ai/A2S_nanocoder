@@ -271,11 +271,11 @@ test('github-copilot template: sets sdkProvider and defaults', t => {
 
 	const config = template!.buildConfig({
 		providerName: '',
-		model: 'gpt-4o, claude-3-5-sonnet-20241022',
+		model: 'gpt-4.1, gpt-5.3-codex, claude-sonnet-4.6',
 	});
 
 	t.is(config.name, 'GitHub Copilot');
 	t.is(config.sdkProvider, 'github-copilot');
 	t.is(config.baseUrl, 'https://api.githubcopilot.com');
-	t.deepEqual(config.models, ['gpt-4o', 'claude-3-5-sonnet-20241022']);
+	t.deepEqual(config.models, ['gpt-4.1', 'gpt-5.3-codex', 'claude-sonnet-4.6']);
 });
